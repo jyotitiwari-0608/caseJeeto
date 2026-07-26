@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken, requireRole } = require('../../middleware/auth.middleware');
 // const { verifyToken, requireRole } = require('../../middleware/auth.middleware');
-const validateObjectId = require('../../middleware/validateObjectId');
+const validateObjectId = require('../../middleware/validateObjectId.middleware');
 const adminRefundController = require('../../controllers/admin/adminRefundController');
 // const adminRefundController = require('../../controllers/admin/adminRefundController');
-
 router.use(verifyToken, requireRole('admin'));
 
 router.get('/', adminRefundController.getRefunds);
