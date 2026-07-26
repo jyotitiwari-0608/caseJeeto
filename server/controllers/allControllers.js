@@ -435,7 +435,7 @@ exports.getBlockedLawyers = asyncHandler(async (req, res) => {
 
 const mongoose = require('mongoose');
 const Booking = require('../models/booking');
-const Availability = require('../models/availability');
+const Availability = require('../models/availibility');
 const Client = require('../models/client');
 const Lawyer = require('../models/lawyer');
 const asyncHandler = require('../middleware/asyncHandler');
