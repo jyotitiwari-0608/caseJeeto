@@ -1,0 +1,270 @@
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\asyncHandler.js
+==================================================
+module.exports = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\auth.middleware.js
+==================================================
+const jwt = require('jsonwebtoken');
+
+// Pulls the token out of "Authorization: Bearer <token>". Returns null
+// (not an error) if the header is missing or malformed, so both
+// verifyToken and attachUserIfPresent can share this without duplicating
+// the parsing logic.
+function extractToken(req) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) return null;
+  return header.slice('Bearer '.length).trim() || null;
+}
+
+// Requires a valid access token. Used on every client and lawyer route —
+// this is identity-only, it does not check role (see requireRole below
+// for that).
+exports.verifyToken = (req, res, next) => {
+  const token = extractToken(req);
+
+  if (!token) {
+    return res.status(401).json({ message: 'Authentication token is required.' });
+  }
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    req.user = { userId: payload.userId, role: payload.role };
+    return next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Session expired. Please log in again.' });
+    }
+    return res.status(401).json({ message: 'Invalid authentication token.' });
+  }
+};
+
+// Same decode as verifyToken, but never rejects the request. Used only on
+// public routes (lawyer browse/search) where a logged-in client should get
+// personalized fields (isSaved/isBlocked) but an anonymous visitor must
+// still be able to load the page. req.user is simply left undefined if
+// there's no token or it's invalid — downstream controllers must check
+// `if (req.user)` before using it, never assume it exists.
+exports.attachUserIfPresent = (req, res, next) => {
+  const token = extractToken(req);
+  if (!token) return next();
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    req.user = { userId: payload.userId, role: payload.role };
+  } catch (err) {
+    // Invalid/expired token on an optional-auth route is not an error —
+    // just treat the request as anonymous.
+  }
+  return next();
+};
+
+// Must run AFTER verifyToken (relies on req.user already being set).
+// Accepts either a single role string or multiple roles, e.g.
+// requireRole('lawyer') or requireRole('lawyer', 'admin').
+exports.requireRole = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'You do not have permission to perform this action.' });
+    }
+    return next();
+  };
+};
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\errorHandler.middleware.js
+==================================================
+// Mount this LAST in server.js, after every route — Express recognizes an
+// error-handling middleware specifically by its 4-argument signature
+// (err, req, res, next). Any controller that calls next(err), or that
+// throws inside an async handler wrapped to forward errors, ends up here
+// instead of every controller writing its own try/catch response shape.
+
+module.exports = (err, req, res, next) => {
+    // Server-side logging always happens, regardless of what we tell the
+    // client. Swap this for a real logger (pino/winston) once you have one;
+    // console.error is fine for now.
+    console.error(err);
+  
+    // Mongoose validation errors (missing required field, failed enum, bad
+    // type, etc.) -> 400 with a field-by-field breakdown so the frontend can
+    // highlight the specific input instead of showing one flat string.
+    if (err.name === 'ValidationError') {
+      const fields = Object.values(err.errors).map((e) => ({
+        field: e.path,
+        message: e.message,
+      }));
+      return res.status(400).json({ message: 'Validation failed.', fields });
+    }
+  
+    // Malformed ObjectId passed to a Mongoose query (e.g. /api/bookings/123
+    // instead of a real ObjectId) -> 400, not a raw 500.
+    if (err.name === 'CastError') {
+      return res.status(400).json({ message: `Invalid value for '${err.path}'.` });
+    }
+  
+    // Duplicate key violation (unique index) -> 409, and try to name the
+    // field so "email already registered" reads better than a raw Mongo
+    // error dump.
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern || {})[0] || 'field';
+      return res.status(409).json({ message: `A record with this ${field} already exists.` });
+    }
+  
+    // JWT errors that reach here (rather than being caught inside
+    // middleware/auth.js) are treated the same way for consistency.
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Invalid or expired authentication token.' });
+    }
+  
+    // A controller that deliberately attached a status (see the
+    // Object.assign(new Error(...), { status }) pattern in bookingController)
+    // gets to choose its own code; everything else is an unexpected 500.
+    const status = err.status || 500;
+    const message = status === 500 ? 'Something went wrong. Please try again.' : err.message;
+  
+    return res.status(status).json({ message });
+  };
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\notFoundHandler.middleware.js
+==================================================
+// Mount this AFTER every real route but BEFORE errorHandler.js. Anything
+// that reaches here didn't match any defined route at all (wrong method,
+// wrong path, typo) — distinct from a controller's own 404s, which mean
+// "the route matched but that specific record wasn't found."
+
+module.exports = (req, res) => {
+    return res.status(404).json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
+  };
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\rateLimiter.middleware.js
+==================================================
+// Requires: npm install express-rate-limit
+const rateLimit = require('express-rate-limit');
+
+// Applied to POST /api/auth/login only. Limits brute-force password
+// guessing per IP. Keyed by IP (the library's default) rather than by the
+// email being attempted, since an attacker controls the email field but
+// not their own IP as easily.
+exports.loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per IP per window
+  standardHeaders: true, // adds RateLimit-* response headers
+  legacyHeaders: false,
+  message: { message: 'Too many login attempts. Please try again in a few minutes.' },
+});
+
+// Applied to POST /api/payments/orders only. Limits how many payment
+// orders a single IP can spin up in a short window — mainly to blunt
+// scripted abuse against your Razorpay account, not normal user behavior
+// (a real client creates one order per booking, rarely back-to-back).
+exports.paymentOrderLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many payment attempts. Please wait a few minutes and try again.' },
+});
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\socketAuth.middleware.js
+==================================================
+const jwt = require('jsonwebtoken');
+
+// Socket.IO middleware, NOT an Express middleware — different signature
+// ((socket, next), not (req, res, next)) and different way of signaling
+// failure (next(new Error(...)) rejects the connection attempt entirely,
+// there's no res.status() to call).
+//
+// Wire this in with: io.use(socketAuthMiddleware)
+//
+// The client must send the token via the handshake auth payload, e.g.:
+//   io(SOCKET_URL, { auth: { token: accessToken } })
+// NOT a query string — query strings are more likely to get logged
+// (server access logs, proxies, browser history) than an auth payload,
+// which is why the Build Mode plan specifies this explicitly.
+module.exports = (socket, next) => {
+  const token = socket.handshake.auth?.token;
+
+  if (!token) {
+    return next(new Error('Authentication token is required.'));
+  }
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    // Same shape as req.user in the Express auth middleware, so any
+    // shared logic (e.g. "is this user allowed in this conversation")
+    // can be written once and reused conceptually across both.
+    socket.user = { userId: payload.userId, role: payload.role };
+    return next();
+  } catch (err) {
+    return next(new Error('Invalid or expired authentication token.'));
+  }
+};
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\upload.middleware.js
+==================================================
+// Requires: npm install multer
+const multer = require('multer');
+
+// Memory storage, not disk storage: the file buffer goes straight to the
+// cloud storage adapter (see services/storage/cloudinaryStorage.js)
+// without ever touching this server's filesystem. This matters
+// specifically for hosts like Render/Railway where local disk writes
+// don't persist across deploys/restarts anyway.
+const storage = multer.memoryStorage();
+
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — plenty for a scanned document/photo
+
+function fileFilter(req, file, cb) {
+  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    // Passing an Error here (rather than throwing) is how multer expects
+    // rejection to be signaled — it surfaces as err.code === 'LIMIT_UNEXPECTED_FILE'
+    // or a generic error caught by errorHandler.js.
+    return cb(new Error('Only JPEG, PNG, WEBP images or PDF files are allowed.'));
+  }
+  return cb(null, true);
+}
+
+// Usage in a route:
+//   router.post('/', verifyToken, upload.single('file'), uploadController.uploadFile)
+// req.file will then contain { buffer, mimetype, originalname, size, ... }
+module.exports = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: MAX_FILE_SIZE_BYTES },
+});
+
+==================================================
+File: C:\Users\tiwar\OneDrive\Desktop\caseJeeto\server\middleware\validateObjectId.middleware.js
+==================================================
+const mongoose = require('mongoose');
+
+// Factory, not a middleware itself — call it with the param name to check:
+//   router.get('/:id', validateObjectId('id'), controller.getBookingById)
+//   router.post('/:lawyerId/x', validateObjectId('lawyerId'), controller.x)
+//
+// Catches malformed IDs (wrong length, bad characters, someone passing
+// "undefined" as a literal string from a broken frontend call) before they
+// reach a Mongoose query and surface as a less readable CastError further
+// down in errorHandler.js.
+module.exports = (paramName) => (req, res, next) => {
+  const value = req.params[paramName];
+
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    return res.status(400).json({ message: `'${value}' is not a valid ${paramName}.` });
+  }
+
+  return next();
+};
