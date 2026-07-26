@@ -1,0 +1,1978 @@
+===== lawyer.js =====
+Last Modified: 07/14/2026 18:07:01
+
+// everything the client can see about lawyer 
+// experience , courtsPracticed , userId , specialization , language , fees , office address , bio , profile photo , verificatoinStatus , isProfileVisible, rating , review count , totalConsultations , razorpayaccountid,rank
+const mongoose = require("mongoose");
+
+const lawyerSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+    },
+
+    specialization: [
+      {
+        type: String,
+        required: true,
+      },
+    ],
+
+    yearsOfExperience: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    courtsPracticed: [
+      {
+        type: String,
+      },
+    ],
+
+    languages: [
+      {
+        type: String,
+      },
+    ],
+
+    consultationFee: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    bio: {
+      type: String,
+      maxlength: 1500,
+    },
+
+    officeAddress: {
+      type: String,
+    },
+
+    profilePhoto: {
+      type: String,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: [
+        "pending",
+        "under_review",
+        "approved",
+        "rejected",
+        "suspended",
+      ],
+      default: "pending",
+    },
+
+    isProfileVisible: {
+      type: Boolean,
+      default: false,
+    },
+
+    rating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+
+    reviewCount: {
+      type: Number,
+      default: 0,
+    },
+
+    totalConsultations: {
+      type: Number,
+      default: 0,
+    },
+
+    razorpayAccountId: {
+      type: String,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model("Lawyer", lawyerSchema);
+
+
+===== lawyerVerification.js =====
+Last Modified: 07/14/2026 18:14:04
+
+//type , ref , required , trim , minlenght , maxlength , default , enum , unique , lowercase
+const mongoose = require("mongoose");
+
+const lawyerVerificationSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+      unique: true,
+    },
+
+    overallStatus: {
+      type: String,
+      enum: [
+        "pending",
+        "under_review",
+        "approved",
+        "rejected",
+        "suspended",
+      ],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    rejectionReason: String,
+
+    adminRemarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "LawyerVerification",
+  lawyerVerificationSchema
+);
+
+
+===== governmentVerification.js =====
+Last Modified: 07/14/2026 18:24:37
+
+// This is the document locker
+// Purpose : Stores every document lawyer uploads.
+
+const mongoose = require("mongoose");
+
+const governmentIdVerificationSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+    },
+
+    documentType: {
+      type: String,
+      enum: [
+        "AADHAAR",
+        "PASSPORT",
+        "DRIVING_LICENSE",
+        "VOTER_ID"
+      ],
+      required: true,
+    },
+
+    documentNumber: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    dateOfBirth: Date,
+
+    issueDate: Date,
+
+    expiryDate: Date,
+
+    frontImageUrl: {
+      type: String,
+      required: true,
+    },
+
+    backImageUrl: String,
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "GovernmentIdVerification",
+  governmentIdVerificationSchema
+);
+
+
+===== panVerification.js =====
+Last Modified: 07/14/2026 18:25:53
+
+const mongoose = require("mongoose");
+
+const panVerificationSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+    },
+
+    panNumber: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+    },
+
+    fullName: {
+      type: String,
+      required: true,
+    },
+
+    panImageUrl: {
+      type: String,
+      required: true,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model("PanVerification", panVerificationSchema);
+
+
+===== barCouncilEnrollment.js =====
+Last Modified: 07/14/2026 18:27:51
+
+const mongoose = require("mongoose");
+
+const barCouncilEnrollmentSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+    },
+
+    enrollmentNumber: {
+      type: String,
+      required: true,
+    },
+
+    advocateName: {
+      type: String,
+      required: true,
+    },
+
+    stateBarCouncil: {
+      type: String,
+      required: true,
+    },
+
+    enrollmentDate: {
+      type: Date,
+      required: true,
+    },
+
+    certificateUrl: {
+      type: String,
+      required: true,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "BarCouncilEnrollment",
+  barCouncilEnrollmentSchema
+);
+
+
+===== barCouncilId.js =====
+Last Modified: 07/14/2026 18:28:53
+
+const mongoose = require("mongoose");
+
+const barCouncilIdSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+    },
+
+    advocateName: {
+      type: String,
+      required: true,
+    },
+
+    enrollmentNumber: {
+      type: String,
+      required: true,
+    },
+
+    stateBarCouncil: {
+      type: String,
+      required: true,
+    },
+
+    idCardImageUrl: {
+      type: String,
+      required: true,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model("BarCouncilId", barCouncilIdSchema);
+
+
+===== lawDegree.js =====
+Last Modified: 07/14/2026 18:29:53
+
+const mongoose = require("mongoose");
+
+const lawDegreeSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+    },
+
+    degree: {
+      type: String,
+      enum: [
+        "LL.B.",
+        "B.A. LL.B.",
+        "B.Com LL.B.",
+        "BBA LL.B.",
+        "LL.M.",
+        "Other"
+      ],
+      required: true,
+    },
+
+    university: {
+      type: String,
+      required: true,
+    },
+
+    college: String,
+
+    passingYear: {
+      type: Number,
+      required: true,
+    },
+
+    certificateUrl: {
+      type: String,
+      required: true,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model("LawDegree", lawDegreeSchema);
+
+
+===== professionalPhoto.js =====
+Last Modified: 07/14/2026 18:31:19
+
+const mongoose = require("mongoose");
+
+const professionalPhotoSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+      unique: true,
+    },
+
+    photoUrl: {
+      type: String,
+      required: true,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "approved",
+    },
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "ProfessionalPhoto",
+  professionalPhotoSchema
+);
+
+
+===== bankVerification.js =====
+Last Modified: 07/14/2026 18:32:35
+
+const mongoose = require("mongoose");
+
+const bankVerificationSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+    },
+
+    accountHolderName: {
+      type: String,
+      required: true,
+    },
+
+    bankName: {
+      type: String,
+      required: true,
+    },
+
+    accountNumber: {
+      type: String,
+      required: true,
+      select: false,
+    },
+
+    ifscCode: {
+      type: String,
+      required: true,
+      uppercase: true,
+    },
+
+    cancelledChequeUrl: String,
+
+    passbookUrl: String,
+
+    razorpayLinkedAccountId: String,
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "BankVerification",
+  bankVerificationSchema
+);
+
+
+===== certificateOfPractice.js =====
+Last Modified: 07/14/2026 18:34:14
+
+const mongoose = require("mongoose");
+
+const certificateOfPracticeSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+    },
+
+    certificateNumber: {
+      type: String,
+      required: true,
+    },
+
+    issueDate: Date,
+
+    expiryDate: Date,
+
+    certificateUrl: {
+      type: String,
+      required: true,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    remarks: String,
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "CertificateOfPractice",
+  certificateOfPracticeSchema
+);
+
+
+===== professionalExperience.js =====
+Last Modified: 07/14/2026 18:38:26
+
+const mongoose = require("mongoose");
+
+const experienceSchema = new mongoose.Schema(
+  {
+    organizationName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    designation: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    employmentType: {
+      type: String,
+      enum: [
+        "Law Firm",
+        "Independent Practice",
+        "Internship",
+        "Chamber",
+        "Corporate Legal",
+        "Government",
+        "Other",
+      ],
+      required: true,
+    },
+
+    startDate: {
+      type: Date,
+      required: true,
+    },
+
+    endDate: Date,
+
+    currentlyWorking: {
+      type: Boolean,
+      default: false,
+    },
+
+    experienceCertificateUrl: String,
+
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    remarks: String,
+  },
+  {
+    _id: true,
+  }
+);
+
+const professionalExperienceSchema = new mongoose.Schema(
+  {
+    lawyerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lawyer",
+      required: true,
+      unique: true,
+    },
+
+    experiences: [experienceSchema],
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    verifiedAt: Date,
+
+    overallVerificationStatus: {
+      type: String,
+      enum: [
+        "pending",
+        "approved",
+        "rejected",
+      ],
+      default: "pending",
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "ProfessionalExperience",
+  professionalExperienceSchema
+);
+
+
+===== booking.js =====
+Last Modified: 07/14/2026 18:46:57
+
+// server/models/Booking.js
+// clientId and lawyerId both point at User (not LawyerProfile) so that the
+// auth-scoping logic coming in Phase 4 — "a client only ever sees their own
+// bookings, a lawyer only ever sees bookings made with them" — can compare
+// directly against req.user.userId without an extra lookup.
+/**
+ * Client books lawyer
+        │
+        ▼
+Booking
+        │
+        ▼
+Payment
+        │
+        ▼
+Chat
+        │
+        ▼
+Video Consultation
+ */
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+const bookingSchema = new Schema(
+  {
+    clientId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    lawyerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    scheduledAt: {
+      type: Date,
+      required: true,
+    },
+    durationMinutes: {
+      type: Number,
+      required: true,
+      default: 30,
+      min: 5,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'confirmed', 'completed', 'cancelled'],
+      default: 'pending', // stays pending until payment is confirmed (Phase 9)
+    },
+    paymentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Payment',
+      default: null,
+    },
+    dailyRoomUrl: {
+      type: String,
+      default: null, // populated once status flips to confirmed (Phase 8)
+    },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('Booking', bookingSchema);
+
+
+===== conversation.js =====
+Last Modified: 07/14/2026 18:49:18
+
+const mongoose = require("mongoose");
+
+const { Schema } = mongoose;
+
+const messageSchema = new Schema(
+  {
+    senderId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
+
+    readBy: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+  },
+  {
+    _id: true,
+  }
+);
+
+const conversationSchema = new Schema(
+  {
+    clientId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    lawyerId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    messages: [messageSchema],
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "Conversation",
+  conversationSchema
+);
+
+
+===== payment.js =====
+Last Modified: 07/14/2026 18:57:57
+
+const mongoose = require("mongoose");
+const { Schema } = mongoose;
+
+const paymentSchema = new Schema(
+{
+    // ------------------------------------------------------------------
+    // Client who made the payment.
+    // Useful for showing payment history and admin reports.
+    // ------------------------------------------------------------------
+    clientId: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+
+    // ------------------------------------------------------------------
+    // Lawyer who will receive the consultation amount.
+    // Used for payouts, earnings dashboard and financial reports.
+    // ------------------------------------------------------------------
+    lawyerId: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+
+    // ------------------------------------------------------------------
+    // Booking associated with this payment.
+    // One payment belongs to one booking.
+    // Allows us to know which consultation this payment was for.
+    // ------------------------------------------------------------------
+    bookingId: {
+        type: Schema.Types.ObjectId,
+        ref: "Booking",
+        required: true,
+    },
+
+    // ------------------------------------------------------------------
+    // Consultation fee charged by the lawyer.
+    // Stored in the smallest currency unit (paise).
+    //
+    // Example
+    // ₹1000
+    // becomes
+    // 100000 paise
+    // ------------------------------------------------------------------
+    consultationFee: {
+        type: Number,
+        required: true,
+        min: 0,
+    },
+
+    // ------------------------------------------------------------------
+    // Amount retained by CaseLeeto as platform commission.
+    //
+    // Example
+    //
+    // Consultation Fee = ₹1000
+    //
+    // Platform Fee = ₹150
+    // ------------------------------------------------------------------
+    platformFee: {
+        type: Number,
+        required: true,
+        min: 0,
+    },
+
+    // ------------------------------------------------------------------
+    // Amount transferred to the lawyer.
+    //
+    // Example
+    //
+    // ₹1000
+    //
+    // Platform Fee ₹150
+    //
+    // Lawyer receives ₹850
+    // ------------------------------------------------------------------
+    lawyerPayout: {
+        type: Number,
+        required: true,
+        min: 0,
+    },
+
+    // ------------------------------------------------------------------
+    // Currency in which payment was made.
+    //
+    // Default = INR
+    //
+    // Helpful if international payments are supported later.
+    // ------------------------------------------------------------------
+    currency: {
+        type: String,
+        default: "INR",
+        uppercase: true,
+    },
+
+    // ================================================================
+    // Razorpay Identifiers
+    // ================================================================
+
+    // ------------------------------------------------------------------
+    // Razorpay Order ID.
+    //
+    // Generated before user pays.
+    // Represents a payment request.
+    // ------------------------------------------------------------------
+    razorpayOrderId: {
+        type: String,
+        default: null,
+    },
+
+    // ------------------------------------------------------------------
+    // Razorpay Payment ID.
+    //
+    // Generated only after successful payment.
+    // Represents the actual payment transaction.
+    // ------------------------------------------------------------------
+    razorpayPaymentId: {
+        type: String,
+        default: null,
+    },
+
+    // ------------------------------------------------------------------
+    // Razorpay Route Transfer ID.
+    //
+    // Represents the transfer from platform account
+    // to lawyer's linked Razorpay account.
+    // ------------------------------------------------------------------
+    razorpayTransferId: {
+        type: String,
+        default: null,
+    },
+
+    // ------------------------------------------------------------------
+    // Lawyer's Razorpay Linked Account ID.
+    //
+    // Needed when using Razorpay Route.
+    // Identifies the destination account for payout.
+    // ------------------------------------------------------------------
+    razorpayLinkedAccountId: {
+        type: String,
+        default: null,
+    },
+
+    // ================================================================
+    // Payment Status
+    // ================================================================
+
+    // ------------------------------------------------------------------
+    // Current payment lifecycle.
+    //
+    // created
+    // → Order created
+    //
+    // paid
+    // → Money received
+    //
+    // failed
+    // → Payment unsuccessful
+    //
+    // cancelled
+    // → User cancelled payment
+    //
+    // refunded
+    // → Refund completed
+    // ------------------------------------------------------------------
+    paymentStatus: {
+        type: String,
+        enum: [
+            "created",
+            "paid",
+            "failed",
+            "cancelled",
+            "refunded"
+        ],
+        default: "created",
+    },
+
+    // ------------------------------------------------------------------
+    // Tracks lawyer payout separately.
+    //
+    // Payment may be successful,
+    // but payout can still be pending.
+    //
+    // Example
+    //
+    // Client paid today
+    //
+    // Lawyer receives money tomorrow.
+    // ------------------------------------------------------------------
+    payoutStatus: {
+        type: String,
+        enum: [
+            "pending",
+            "processing",
+            "completed",
+            "failed"
+        ],
+        default: "pending",
+    },
+
+    // ================================================================
+    // Refund Information
+    // ================================================================
+
+    // ------------------------------------------------------------------
+    // Amount refunded to the client.
+    //
+    // Can be
+    //
+    // Full refund
+    //
+    // Partial refund
+    // ------------------------------------------------------------------
+    refundAmount: {
+        type: Number,
+        default: 0,
+    },
+
+    // ------------------------------------------------------------------
+    // Reason for refund.
+    //
+    // Examples
+    //
+    // Lawyer Cancelled
+    // Client Cancelled
+    // Technical Issue
+    // Duplicate Payment
+    // Admin Refund
+    // ------------------------------------------------------------------
+    refundReason: {
+        type: String,
+        default: null,
+    },
+
+    // ------------------------------------------------------------------
+    // Date and time when refund was processed.
+    // ------------------------------------------------------------------
+    refundedAt: {
+        type: Date,
+        default: null,
+    },
+
+    // ------------------------------------------------------------------
+    // Refund ID returned by Razorpay.
+    //
+    // Used to track refund inside Razorpay Dashboard.
+    // ------------------------------------------------------------------
+    razorpayRefundId: {
+        type: String,
+        default: null,
+    },
+
+    // ================================================================
+    // Failure Information
+    // ================================================================
+
+    // ------------------------------------------------------------------
+    // Stores why payment failed.
+    //
+    // Examples
+    //
+    // Insufficient Balance
+    // UPI Timeout
+    // Card Declined
+    // Network Error
+    // ------------------------------------------------------------------
+    failureReason: {
+        type: String,
+        default: null,
+    },
+
+    // ================================================================
+    // Security
+    // ================================================================
+
+    // ------------------------------------------------------------------
+    // Never trust frontend payment success.
+    //
+    // This becomes true only after Razorpay webhook
+    // confirms payment.
+    // ------------------------------------------------------------------
+    webhookVerified: {
+        type: Boolean,
+        default: false,
+    },
+},
+{
+    // Automatically creates
+    //
+    // createdAt
+    // updatedAt
+    timestamps: true,
+}
+);
+
+module.exports = mongoose.model("Payment", paymentSchema);
+
+
+===== refund.js =====
+Last Modified: 07/14/2026 19:08:07
+
+const mongoose = require("mongoose");
+const { Schema } = mongoose;
+
+const refundSchema = new Schema(
+  {
+    // ===============================================================
+    // REFERENCES
+    // ===============================================================
+
+    // ------------------------------------------------------------------
+    // Payment against which this refund is issued.
+    // One refund always belongs to one payment.
+    // ------------------------------------------------------------------
+    paymentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Payment",
+      required: true,
+    },
+
+    // ------------------------------------------------------------------
+    // Booking associated with the refunded payment.
+    // Makes it easy to identify which consultation is being refunded.
+    // ------------------------------------------------------------------
+    bookingId: {
+      type: Schema.Types.ObjectId,
+      ref: "Booking",
+      required: true,
+    },
+
+    // ------------------------------------------------------------------
+    // Client receiving the refund.
+    // Useful for refund history and admin reports.
+    // ------------------------------------------------------------------
+    clientId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    // ------------------------------------------------------------------
+    // Lawyer associated with this booking.
+    // Helps generate reports such as:
+    // "How many refunds were caused by this lawyer?"
+    // ------------------------------------------------------------------
+    lawyerId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    // ===============================================================
+    // REFUND DETAILS
+    // ===============================================================
+
+    // ------------------------------------------------------------------
+    // Amount refunded to the client.
+    //
+    // Store in the smallest currency unit.
+    //
+    // Example
+    //
+    // ₹1000
+    //
+    // becomes
+    //
+    // 100000 paise
+    // ------------------------------------------------------------------
+    refundAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    // ------------------------------------------------------------------
+    // Why is the refund being issued?
+    //
+    // Every refund must have a business reason.
+    //
+    // LAWYER_CANCELLED
+    // Lawyer cancelled the consultation.
+    //
+    // CLIENT_CANCELLED_WITHIN_POLICY
+    // Client cancelled within the allowed cancellation window.
+    //
+    // CLIENT_CANCELLED_OUTSIDE_POLICY
+    // Client cancelled too late.
+    // May result in partial or zero refund depending on policy.
+    //
+    // BOOKING_CREATION_FAILED
+    // Payment succeeded but booking could not be created.
+    //
+    // LAWYER_NO_SHOW
+    // Lawyer never joined the consultation.
+    //
+    // TECHNICAL_FAILURE
+    // Daily.co, backend or infrastructure failure.
+    //
+    // DUPLICATE_PAYMENT
+    // Client accidentally paid twice.
+    //
+    // ADMIN_GOODWILL
+    // Manual refund approved by admin.
+    //
+    // OTHER
+    // Any situation not covered above.
+    // ------------------------------------------------------------------
+    refundReason: {
+      type: String,
+      enum: [
+        "LAWYER_CANCELLED",
+
+    "CLIENT_CANCELLED_WITHIN_POLICY",
+
+    "CLIENT_CANCELLED_OUTSIDE_POLICY",
+
+    "BOOKING_CREATION_FAILED",
+
+    "LAWYER_NO_SHOW",
+
+    "TECHNICAL_FAILURE",
+
+    "DUPLICATE_PAYMENT",
+
+    "LAWYER_MISCONDUCT",
+
+    "OTHER"
+      ],
+      required: true,
+    },
+
+    // ------------------------------------------------------------------
+    // Additional explanation for the refund.
+    //
+    // Example:
+    //
+    // "Client cancelled 28 hours before consultation."
+    //
+    // "Lawyer informed medical emergency."
+    // ------------------------------------------------------------------
+    refundNote: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    // ===============================================================
+    // REASON VERIFICATION
+    // ===============================================================
+
+    // ------------------------------------------------------------------
+    // Stores the evidence proving why the refund was approved.
+    //
+    // Example
+    //
+    // LAWYER_NO_SHOW
+    // Evidence:
+    // Client joined at 3:00 PM.
+    // Lawyer never joined for 15 minutes.
+    //
+    // TECHNICAL_FAILURE
+    // Evidence:
+    // Daily.co API outage.
+    //
+    // DUPLICATE_PAYMENT
+    // Evidence:
+    // Two successful UPI transactions found.
+    //
+    // This creates an audit trail for future disputes.
+    // ------------------------------------------------------------------
+    reasonVerification: {
+      verifiedBy: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+
+      verifiedAt: {
+        type: Date,
+      },
+
+      evidence: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      attachments: [
+        {
+          type: String,
+        },
+      ],
+    },
+
+    // ===============================================================
+    // REFUND STATUS
+    // ===============================================================
+
+    // ------------------------------------------------------------------
+    // Current lifecycle of the refund.
+    //
+    // requested
+    // Client/Admin requested refund.
+    //
+    // under_review
+    // Admin is reviewing evidence.
+    //
+    // approved
+    // Refund approved but Razorpay not called yet.
+    //
+    // rejected
+    // Refund request rejected.
+    //
+    // processing
+    // Razorpay refund request initiated.
+    //
+    // completed
+    // Money successfully refunded.
+    //
+    // failed
+    // Refund failed.
+    // ------------------------------------------------------------------
+    refundStatus: {
+      type: String,
+      enum: [
+        "requested",
+        "under_review",
+        "approved",
+        "rejected",
+        "processing",
+        "completed",
+        "failed",
+      ],
+      default: "requested",
+    },
+
+    // ===============================================================
+    // ADMIN APPROVAL
+    // ===============================================================
+
+    // ------------------------------------------------------------------
+    // Admin who approved the refund.
+    // ------------------------------------------------------------------
+    approvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    // ------------------------------------------------------------------
+    // Date and time when refund was approved.
+    // ------------------------------------------------------------------
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ===============================================================
+    // RAZORPAY
+    // ===============================================================
+
+    // ------------------------------------------------------------------
+    // Refund ID returned by Razorpay.
+    // Used for reconciliation and dashboard tracking.
+    // ------------------------------------------------------------------
+    razorpayRefundId: {
+      type: String,
+      default: null,
+    },
+
+    // ------------------------------------------------------------------
+    // Date when Razorpay successfully processed the refund.
+    // ------------------------------------------------------------------
+    refundedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ===============================================================
+    // FAILURE INFORMATION
+    // ===============================================================
+
+    // ------------------------------------------------------------------
+    // Stores why the refund failed.
+    //
+    // Example
+    //
+    // Razorpay API Error
+    // Invalid Payment ID
+    // Refund Window Expired
+    // Bank Rejected Refund
+    // ------------------------------------------------------------------
+    failureReason: {
+      type: String,
+      default: null,
+    },
+  },
+  {
+    // Automatically adds:
+    //
+    // createdAt
+    // updatedAt
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model("Refund", refundSchema);
+
+
+===== user.js =====
+Last Modified: 07/15/2026 17:12:44
+
+//type , ref , required , trim , minlenght , maxlength , default , enum , unique , lowercase
+    //name , email , hashedpw , refreshToken, role , verification document - aadhar card + lawyer degree +Bar Council Enrollment Certificate+Bar Council ID Card , age, vo lawyer supreme court wla h ya high ya lower , verified or not
+    // signed agreements of lawyersand clients
+    //lawyers have to pay platform fees , 15% of total consultationfees received by all clients 
+    const mongoose = require("mongoose");
+
+    const userSchema = new mongoose.Schema(
+      {
+        role: {
+          type: String,
+          enum: ["client", "lawyer", "admin"],
+          required: true,
+        },
+    
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+    
+        email: {
+          type: String,
+          required: true,
+          unique: true,
+          lowercase: true,
+          trim: true,
+        },
+    
+        phone: {
+          type: String,
+          required: true,
+          unique: true,
+          trim: true,
+        },
+    
+        passwordHash: {
+          type: String,
+          required: true,
+          select: false,
+        },
+    
+        isEmailVerified: {
+          type: Boolean,
+          default: false,
+        },
+    
+        isPhoneVerified: {
+          type: Boolean,
+          default: false,
+        },
+    
+        isActive: {
+          type: Boolean,
+          default: true,
+        },
+    
+        lastLogin: Date,
+        refreshToken:{
+            type : String , 
+            default : null
+        }
+      },
+      {
+        timestamps: true,
+      }
+    );
+    
+    module.exports = mongoose.model("User", userSchema);
+
+/**
+ * Since you're building **CaseLeeto** for India (using Razorpay, etc.), you should verify lawyers at **three levels**:
+
+1. **Identity** (Is this person who they claim to be?)
+2. **Professional Qualification** (Are they actually licensed to practice law?)
+3. **Payout Compliance** (Can you legally pay them?)
+
+A production marketplace typically doesn't rely on a single document like a law degree because a law degree alone **does not authorize someone to practice law**.
+
+## 1. Government Identity (Required)
+
+These establish the person's identity.
+
+* Aadhaar Card (or another government-issued ID)
+* PAN Card (important for tax and payouts)
+* Passport (optional alternative)
+* Driving Licence (optional alternative)
+
+Store:
+
+```text
+Document Type
+Document Number
+Front Image
+Back Image (if applicable)
+Verification Status
+Verified By
+Verified At
+```
+
+---
+
+## 2. Professional Verification (Most Important)
+
+These prove the person is legally allowed to practice.
+
+### Bar Council Enrollment Certificate (Required)
+
+This is far more important than the law degree.
+
+Contains:
+
+* Enrollment Number
+* Advocate Name
+* State Bar Council
+* Date of Enrollment
+
+Example:
+
+```text
+Enrollment Number:
+D/1234/2020
+
+Bar Council:
+Delhi Bar Council
+```
+
+---
+
+### Certificate of Practice (COP) (Recommended)
+
+Some advocates possess a Certificate of Practice issued under Bar Council regulations.
+
+This helps verify that the advocate is actively entitled to practice.
+
+---
+
+### Bar Council ID Card (Recommended)
+
+Many State Bar Councils issue an Advocate Identity Card.
+
+Useful because it contains:
+
+* Photograph
+* Enrollment Number
+* Name
+* State Bar Council
+
+---
+
+### Law Degree (LL.B.) (Optional but Recommended)
+
+Examples:
+
+* LL.B.
+* B.A. LL.B.
+* B.Com LL.B.
+* LL.M. (optional)
+
+This confirms academic qualifications but **does not by itself authorize legal practice**.
+
+---
+
+## 3. Experience Verification (Optional)
+
+These aren't required for onboarding but help build trust.
+
+Examples:
+
+* Chamber/firm experience letters
+* Previous employment letters
+* Internship certificates
+* Court appointment letters
+
+---
+
+## 4. Practice Information
+
+Ask the lawyer to provide:
+
+* Years of experience
+* Primary practice areas
+* Courts they appear before
+* Languages spoken
+* Office address
+
+---
+
+## 5. Profile Photo
+
+A clear professional headshot.
+
+Avoid:
+
+* Group photos
+* Selfies
+* Blurry images
+
+---
+
+## 6. Bank Verification (For Razorpay Route)
+
+Since lawyers receive payouts:
+
+* Bank Account Number
+* IFSC Code
+* Cancelled Cheque or Bank Passbook (optional but useful)
+* Account Holder Name
+
+Razorpay may also require Know Your Customer (KYC) details depending on the account type and regulatory requirements.
+
+---
+
+# Database Design
+
+Instead of adding many document fields directly to the `Lawyer` model, keep them in a separate collection.
+
+```javascript
+LawyerVerification
+
+{
+  _id,
+
+  lawyerId,
+
+  documents: [
+
+    {
+      type: "aadhaar",
+
+      fileUrl,
+
+      status: "approved",
+
+      verifiedAt
+    },
+
+    {
+      type: "pan",
+
+      fileUrl,
+
+      status: "approved"
+    },
+
+    {
+      type: "bar_enrollment",
+
+      enrollmentNumber,
+
+      stateBarCouncil,
+
+      fileUrl,
+
+      status: "approved"
+    },
+
+    {
+      type: "law_degree",
+
+      university,
+
+      year,
+
+      fileUrl,
+
+      status: "approved"
+    }
+
+  ],
+
+  overallStatus: "pending",
+
+  verifiedBy,
+
+  remarks
+}
+```
+
+This is much easier to extend later if you add new document types.
+
+---
+
+# Verification Workflow
+
+```text
+Lawyer Registers
+        │
+        ▼
+Uploads Required Documents
+        │
+        ▼
+Admin Reviews Documents
+        │
+   ┌────┴────┐
+   │         │
+Approved   Rejected
+   │         │
+   ▼         ▼
+Verified  Lawyer uploads corrected documents
+```
+
+Until verification is complete:
+
+* Lawyer cannot receive bookings.
+* Lawyer does not appear in public search results.
+* Lawyer cannot receive payouts.
+
+---
+
+# Recommended Required Documents for CaseLeeto
+
+| Document                                | Required                 | Purpose                                       |
+| --------------------------------------- | ------------------------ | --------------------------------------------- |
+| Government ID (Aadhaar/Passport/etc.)   | ✅                        | Identity verification                         |
+| PAN Card                                | ✅                        | Tax and payout verification                   |
+| Bar Council Enrollment Certificate      | ✅                        | Confirms the advocate is enrolled to practice |
+| Bar Council ID Card (if available)      | ✅ Recommended            | Additional professional verification          |
+| Law Degree (LL.B./Integrated LL.B.)     | ✅ Recommended            | Academic qualification                        |
+| Professional Photo                      | ✅                        | Marketplace profile                           |
+| Bank Details                            | ✅                        | Razorpay Route payouts                        |
+| Certificate of Practice (if applicable) | Optional but recommended | Evidence of active practice                   |
+| Experience/Employment Documents         | Optional                 | Enhances credibility                          |
+
+For a marketplace like CaseLeeto, the **Bar Council Enrollment Certificate** is the single most important professional document. A person may have an LL.B. degree but still not be authorized to practice law unless they are properly enrolled with a State Bar Council. Your verification process should therefore prioritize **Bar Council enrollment** over academic qualifications.
+
+ */
+
+
+===== client.js =====
+Last Modified: 07/15/2026 17:35:33
+
+const { Schema, model } = require('mongoose');
+const mongoose = require('mongoose');
+
+const clientSchema = new Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      unique: true,
+    },
+
+    // CHANGED: renamed from `savedLawyer` -> `savedLawyers` (was singular name
+    // holding an array, kept the ref/required exactly as before).
+    savedLawyers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Lawyer',
+      },
+    ],
+
+    // NEW: lawyers this client has blocked. Hidden from this client's search
+    // results; createBooking / createConversation should reject if either
+    // party has blocked the other. Decide blocking semantics in the
+    // controller layer, not here.
+    blockedLawyers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Lawyer',
+      },
+    ],
+
+    // NEW: short client-facing bio, optional.
+    bio: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: '',
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = model('Client', clientSchema);
+
+
+===== review.js =====
+Last Modified: 07/15/2026 17:36:50
+
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+const reviewSchema = new Schema(
+  {
+    lawyerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Lawyer',
+      required: true,
+    },
+
+    clientId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+
+    // One review per booking. Also lets us verify the booking was actually
+    // completed before allowing the review to be created.
+    bookingId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Booking',
+      required: true,
+    },
+
+    rating: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5,
+    },
+
+    // Optional so star-only reviews are allowed.
+    comment: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: '',
+    },
+
+    // Soft-deletable so a lawyer's rating history / dispute trail isn't lost
+    // on a client deleting their review.
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// A client can only review a given booking once.
+reviewSchema.index({ clientId: 1, bookingId: 1 }, { unique: true });
+reviewSchema.index({ lawyerId: 1, createdAt: -1 });
+
+module.exports = mongoose.model('Review', reviewSchema);
+
+
+===== availibility.js =====
+Last Modified: 07/15/2026 17:37:27
+
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+// One document per lawyer per calendar date. Keeps slot-locking simple:
+// booking a slot is an atomic findOneAndUpdate against this one document
+// instead of scanning across many small slot documents.
+const slotSchema = new Schema(
+  {
+    startTime: {
+      type: Date,
+      required: true,
+    },
+    endTime: {
+      type: Date,
+      required: true,
+    },
+    isBooked: {
+      type: Boolean,
+      default: false,
+    },
+    bookingId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Booking',
+      default: null,
+    },
+  },
+  { _id: true }
+);
+
+const availabilitySchema = new Schema(
+  {
+    lawyerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Lawyer',
+      required: true,
+    },
+
+    // Store as a normalized UTC midnight date, e.g. 2026-07-20T00:00:00Z,
+    // so lookups are `Availability.findOne({ lawyerId, date })`.
+    date: {
+      type: Date,
+      required: true,
+    },
+
+    slots: [slotSchema],
+  },
+  {
+    timestamps: true,
+  }
+);
+
+availabilitySchema.index({ lawyerId: 1, date: 1 }, { unique: true });
+
+module.exports = mongoose.model('Availability', availabilitySchema);
+
+

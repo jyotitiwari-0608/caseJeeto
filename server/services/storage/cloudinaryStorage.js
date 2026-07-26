@@ -1,0 +1,47 @@
+// Requires: npm install cloudinary streamifier
+//
+// This is the single point of contact with Cloudinary. Every other file
+// in the app (uploadController.js) calls uploadBuffer() without knowing
+// or caring which cloud provider is behind it — swapping to S3 later
+// means rewriting only this file, not every place that currently accepts
+// a document upload.
+
+const cloudinary = require('cloudinary').v2;
+const streamifier = require('streamifier');
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Cloudinary's upload API is stream-based; multer gives us a Buffer (from
+// memoryStorage), so streamifier bridges the two — it wraps the buffer in
+// a readable stream that .pipe() can consume.
+function uploadBuffer(buffer, folder) {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder, // e.g. 'caseleeto/verification/pan'
+        resource_type: 'auto', // handles both images and PDFs correctly
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        return resolve(result);
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+
+// One exported function, matching the same "provider abstraction" pattern
+// used for services/video/dailyProvider.js in Phase 8 — a single narrow
+// function signature that callers depend on, not the Cloudinary SDK
+// directly.
+exports.uploadFile = async (buffer, folder) => {
+  const result = await uploadBuffer(buffer, folder);
+  return {
+    url: result.secure_url,
+    publicId: result.public_id, // store this too if you'll ever need to delete/replace the file later
+  };
+};
