@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken, requireRole } = require('../../middleware/auth.middleware');
-const validateObjectId = require('../../middleware/validateObjectId');
+const validateObjectId = require('../../middleware/validateObjectId.middleware');
 const adminVerificationController = require('../../controllers/admin/adminVerificationController');
 // const adminVerificationController = require('../../controllers/admin/adminVerificationController');
-
+// const validateObjectId = require('../../middleware/validateObjectId.middleware');
+// const validateObjectId = require('../../middleware/validateObjectId.middleware');
 router.use(verifyToken, requireRole('admin'));
 
 router.get('/pending/:type', adminVerificationController.getPendingDocuments);
