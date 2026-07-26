@@ -9,7 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/auth-context'
 import { demoLawyers } from '@/data/lawyers'
-import { ApiError, DEMO_DATA_ENABLED, api } from '@/lib/api'
+import { ApiError, DEMO_DATA_ENABLED, api, shouldUseDemoFallback } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 function DetailSkeleton() {
@@ -24,8 +24,9 @@ export function LawyerDetailPage() {
   const { lawyerId = '' } = useParams()
   const { user, accessToken } = useAuth()
   const demoLawyer = DEMO_DATA_ENABLED ? demoLawyers.find((item) => item._id === lawyerId) : undefined
-  const query = useQuery({ queryKey: ['lawyer', lawyerId, user?.id || 'guest'], queryFn: ({ signal }) => api.getLawyer(lawyerId, accessToken || undefined, signal), enabled: Boolean(lawyerId) && !demoLawyer, retry: false })
-  const lawyer = demoLawyer || query.data?.data.lawyer
+  const query = useQuery({ queryKey: ['lawyer', lawyerId, user?.id || 'guest'], queryFn: ({ signal }) => api.getLawyer(lawyerId, accessToken || undefined, signal), enabled: Boolean(lawyerId), retry: false })
+  const usingDemo = Boolean(demoLawyer) && query.isError && shouldUseDemoFallback(query.error)
+  const lawyer = usingDemo ? demoLawyer : query.data?.data.lawyer
 
   if (query.isLoading) return <DetailSkeleton />
   if (!lawyer) return <div className="mx-auto max-w-3xl px-4 py-16"><ErrorState title={query.error instanceof ApiError && query.error.status === 404 ? 'Advocate profile not found' : 'Advocate profile unavailable'} message={query.error instanceof ApiError ? query.error.message : 'This profile could not be loaded from the live directory.'} onRetry={() => void query.refetch()} /></div>
@@ -35,7 +36,7 @@ export function LawyerDetailPage() {
       <section className="profile-hero border-b">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <Link to="/lawyers" className="pressable inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" aria-hidden="true" /> Back to all advocates</Link>
-          {demoLawyer && <div className="mt-4"><DemoDataNotice /></div>}
+          {usingDemo && <div className="mt-4"><DemoDataNotice /></div>}
 
           <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
             <div className="grid gap-14 pb-10 sm:pb-14">

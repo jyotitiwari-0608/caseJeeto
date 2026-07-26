@@ -14,6 +14,7 @@ import {
   setAuthRefreshHandler,
   setUnauthorizedHandler,
 } from './api.ts'
+import { demoLawyers } from '../data/lawyers.ts'
 import { lawyerSearchDestination, practiceAreaForSearch } from './discovery.ts'
 import { hashTargetId, isUnmodifiedPrimaryActivation, scrollRepeatedHashDestination, scrollToLocationHash, shouldResetScroll } from './navigation.ts'
 import { AUTH_STORAGE_KEY, clearSession, commitRotatedSession, isStoredAuth, normalizePhoneNumber, privateQueryKey, readStoredAuth, roleFromSearchParams, writeStoredAuth } from './session.ts'
@@ -39,8 +40,40 @@ test('recognized legal needs map to specialization search', () => {
 
 test('demo fallback is restricted to enabled network failures', () => {
   assert.equal(shouldUseDemoFallback(new ApiError('offline', null, 'network'), true), true)
+  assert.equal(shouldUseDemoFallback(new ApiError('timed out', null, 'timeout'), true), true)
   assert.equal(shouldUseDemoFallback(new ApiError('server', 500, 'http'), true), false)
   assert.equal(shouldUseDemoFallback(new ApiError('offline', null, 'network'), false), false)
+})
+
+test('a bundled demo lawyer ID still resolves through the live API and preserves live account state', async () => {
+  const originalFetch = globalThis.fetch
+  const demoId = demoLawyers[0]._id
+  let requestedUrl = ''
+  let authorization = ''
+
+  globalThis.fetch = async (input, init) => {
+    requestedUrl = String(input)
+    authorization = new Headers(init?.headers).get('Authorization') || ''
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        lawyer: { ...validLawyer, _id: demoId, user: { _id: 'live-user', name: 'Adv. Live Profile' } },
+        isSaved: true,
+        isBlocked: true,
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  try {
+    const response = await api.getLawyer(demoId, 'live-access-token')
+    assert.match(requestedUrl, new RegExp(`/lawyers/${demoId}$`))
+    assert.equal(authorization, 'Bearer live-access-token')
+    assert.equal(response.data.lawyer.user.name, 'Adv. Live Profile')
+    assert.equal(response.data.isSaved, true)
+    assert.equal(response.data.isBlocked, true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('stored sessions require a validated user and both rotated tokens', () => {
