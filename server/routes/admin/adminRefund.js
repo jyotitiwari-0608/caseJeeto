@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken, requireRole } = require('../../middleware/auth');
 const validateObjectId = require('../../middleware/validateObjectId');
-const adminRefundController = require('../controllers/adminRefundController');
+const adminRefundController = require('../../controllers/admin/adminRefundController');
+// const adminRefundController = require('../../controllers/admin/adminRefundController');
 
 router.use(verifyToken, requireRole('admin'));
 

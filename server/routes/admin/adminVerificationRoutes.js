@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken, requireRole } = require('../../middleware/auth');
 const validateObjectId = require('../../middleware/validateObjectId');
-const adminVerificationController = require('../controllers/adminVerificationController');
+const adminVerificationController = require('../../controllers/admin/adminVerificationController');
+// const adminVerificationController = require('../../controllers/admin/adminVerificationController');
 
 router.use(verifyToken, requireRole('admin'));
 

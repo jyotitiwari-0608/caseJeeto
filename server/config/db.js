@@ -3,10 +3,10 @@ const mongoose = require('mongoose')
 const connectDb = async()=>{
     try{
         const conn = await mongoose.connect(uri);
-    concole.log(`connected to database`);
+    console.log(`connected to database`);
     }
     catch(err){
-    concole.log(`not connected to database`);
+    console.log(`not connected to database`);
     console.log(`error : ${err.message}`)
     }
 }
