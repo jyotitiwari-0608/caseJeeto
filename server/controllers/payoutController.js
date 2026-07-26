@@ -1,3 +1,4 @@
+// payoutController.js
 const Payment = require('../models/payment');
 
 // GET /api/lawyers/me/earnings

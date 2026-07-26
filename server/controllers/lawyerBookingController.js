@@ -1,78 +1,102 @@
-const Payment = require('../models/payment');
+// lawyerBookingController.js
+const Booking = require('../models/booking');
+const Availability = require('../models/availibility');
+const Lawyer = require('../models/lawyer');
+const asyncHandler = require('../middleware/asyncHandler');
+const AppError = require('../utils/AppError');
+const { sendSuccess, paginationMeta } = require('../utils/apiResponse');
 
-// GET /api/lawyers/me/earnings
-exports.getMyEarnings = async (req, res) => {
-  try {
-    const lawyerId = req.user.userId;
-
-    const totals = await Payment.aggregate([
-      { $match: { lawyerId, paymentStatus: 'paid' } },
-      {
-        $group: {
-          _id: null,
-          totalEarned: { $sum: '$lawyerPayout' },
-          totalPaidOut: {
-            $sum: { $cond: [{ $eq: ['$payoutStatus', 'completed'] }, '$lawyerPayout', 0] },
-          },
-          totalPending: {
-            $sum: { $cond: [{ $ne: ['$payoutStatus', 'completed'] }, '$lawyerPayout', 0] },
-          },
-          consultationCount: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonth = await Payment.aggregate([
-      { $match: { lawyerId, paymentStatus: 'paid', createdAt: { $gte: startOfMonth } } },
-      { $group: { _id: null, amount: { $sum: '$lawyerPayout' }, count: { $sum: 1 } } },
-    ]);
-
-    return res.status(200).json({
-      allTime: totals[0] || { totalEarned: 0, totalPaidOut: 0, totalPending: 0, consultationCount: 0 },
-      thisMonth: thisMonth[0] || { amount: 0, count: 0 },
-    });
-  } catch (err) {
-    return res.status(500).json({ message: 'Could not fetch earnings.', error: err.message });
-  }
+const ALLOWED_TRANSITIONS = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['completed', 'cancelled'],
+  completed: [],
+  cancelled: [],
 };
 
-// GET /api/lawyers/me/payouts?status=&page=&limit=
-exports.getPayoutHistory = async (req, res) => {
-  try {
-    const { status, page = 1, limit = 20 } = req.query;
+// GET /api/lawyers/me/bookings?status=&page=&limit=
+// Always scoped to req.user — a lawyer only ever sees their own bookings.
+exports.getMyBookings = asyncHandler(async (req, res) => {
+  const { status, page = 1, limit = 20 } = req.query;
 
-    const filter = { lawyerId: req.user.userId, paymentStatus: 'paid' };
-    if (status) filter.payoutStatus = status;
+  const filter = { lawyerId: req.user.userId };
+  if (status) filter.status = status;
 
-    const payments = await Payment.find(filter)
-      .populate('bookingId', 'scheduledAt')
-      .populate('clientId', 'name')
-      .sort({ createdAt: -1 })
+  const [bookings, total] = await Promise.all([
+    Booking.find(filter)
+      .populate('clientId', 'name email')
+      .sort({ scheduledAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit));
+      .limit(Number(limit)),
+    Booking.countDocuments(filter),
+  ]);
 
-    const total = await Payment.countDocuments(filter);
+  return sendSuccess(res, 200, { bookings }, paginationMeta({ total, page, limit }));
+});
 
-    return res.status(200).json({ payments, page: Number(page), limit: Number(limit), total });
-  } catch (err) {
-    return res.status(500).json({ message: 'Could not fetch payout history.', error: err.message });
+// GET /api/lawyers/me/bookings/:id
+exports.getBookingById = asyncHandler(async (req, res) => {
+  const booking = await Booking.findById(req.params.id).populate('clientId', 'name email');
+
+  if (!booking) {
+    throw new AppError('Booking not found.', 404);
   }
-};
-
-// GET /api/lawyers/me/payments/booking/:bookingId
-exports.getPaymentByBookingId = async (req, res) => {
-  try {
-    const payment = await Payment.findOne({
-      bookingId: req.params.bookingId,
-      lawyerId: req.user.userId,
-    });
-    if (!payment) {
-      return res.status(404).json({ message: 'Payment not found.' });
-    }
-    return res.status(200).json({ payment });
-  } catch (err) {
-    return res.status(500).json({ message: 'Could not fetch payment.', error: err.message });
+  if (!booking.lawyerId.equals(req.user.userId)) {
+    throw new AppError('Not authorized to view this booking.', 403);
   }
-};
+
+  return sendSuccess(res, 200, { booking });
+});
+
+// PATCH /api/lawyers/me/bookings/:id/complete
+exports.markCompleted = asyncHandler(async (req, res) => {
+  const booking = await Booking.findById(req.params.id);
+
+  if (!booking) {
+    throw new AppError('Booking not found.', 404);
+  }
+  if (!booking.lawyerId.equals(req.user.userId)) {
+    throw new AppError('Not authorized to update this booking.', 403);
+  }
+
+  const allowed = ALLOWED_TRANSITIONS[booking.status] || [];
+  if (!allowed.includes('completed')) {
+    throw new AppError(`Cannot mark a booking as completed from status '${booking.status}'.`, 400);
+  }
+
+  booking.status = 'completed';
+  await booking.save();
+
+  await Lawyer.findByIdAndUpdate(booking.lawyerId, { $inc: { totalConsultations: 1 } });
+
+  return sendSuccess(res, 200, { booking });
+});
+
+// POST /api/lawyers/me/bookings/:id/cancel
+exports.cancelBooking = asyncHandler(async (req, res) => {
+  const { reason } = req.body;
+
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) {
+    throw new AppError('Booking not found.', 404);
+  }
+  if (!booking.lawyerId.equals(req.user.userId)) {
+    throw new AppError('Not authorized to cancel this booking.', 403);
+  }
+  if (!(ALLOWED_TRANSITIONS[booking.status] || []).includes('cancelled')) {
+    throw new AppError(`Cannot cancel a booking in status '${booking.status}'.`, 400);
+  }
+
+  booking.status = 'cancelled';
+  await booking.save();
+
+  await Availability.updateOne(
+    { 'slots.bookingId': booking._id },
+    { $set: { 'slots.$.isBooked': false, 'slots.$.bookingId': null } }
+  );
+
+  // Mirrors client-side cancelBooking in bookingController.js: status flip
+  // only, no automatic refund. If a payment was made, that has to be
+  // handled separately (e.g. an admin-initiated refund for a lawyer
+  // cancellation, since the client didn't request it themselves here).
+  return sendSuccess(res, 200, { booking, cancellationReason: reason || null });
+});
