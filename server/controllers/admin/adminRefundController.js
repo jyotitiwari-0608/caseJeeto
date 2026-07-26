@@ -1,5 +1,5 @@
-const Refund = require('../models/refund');
-const Payment = require('../models/payment');
+const Refund = require('../../models/refund');
+const Payment = require('../../models/payment');
 
 const REVIEWABLE_STATUSES = ['requested', 'under_review'];
 
