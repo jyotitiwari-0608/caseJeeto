@@ -51,9 +51,7 @@ exports.getBookingById = asyncHandler(async (req, res) => {
 exports.markCompleted = asyncHandler(async (req, res) => {
   const booking = await Booking.findById(req.params.id);
 
-  if (!booking) {
-    throw new AppError('Booking not found.', 404);
-  }
+  if (!booking) throw new AppError('Booking not found.', 404);
   if (!booking.lawyerId.equals(req.user.userId)) {
     throw new AppError('Not authorized to update this booking.', 403);
   }
@@ -66,7 +64,10 @@ exports.markCompleted = asyncHandler(async (req, res) => {
   booking.status = 'completed';
   await booking.save();
 
-  await Lawyer.findByIdAndUpdate(booking.lawyerId, { $inc: { totalConsultations: 1 } });
+  // CHANGED: booking.lawyerId is the lawyer's USER id, not a Lawyer
+  // profile _id — Lawyer.findByIdAndUpdate(booking.lawyerId, ...) was
+  // looking up the wrong collection key and silently updating nothing.
+  await Lawyer.findOneAndUpdate({ userId: booking.lawyerId }, { $inc: { totalConsultations: 1 } });
 
   return sendSuccess(res, 200, { booking });
 });

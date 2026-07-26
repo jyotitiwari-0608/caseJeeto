@@ -1,3 +1,121 @@
+// availabilityController.js
+const Availability = require('../models/availibility');
+const Lawyer = require('../models/lawyer');
+const AppError = require('../utils/AppError');
+const asyncHandler = require('../middleware/asyncHandler');
+const { sendSuccess } = require('../utils/apiResponse');
+
+function toUtcMidnight(dateInput) {
+  const d = new Date(dateInput);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+// Every handler below needs the Lawyer PROFILE id (not req.user.userId)
+// because Availability.lawyerId refs 'Lawyer', not 'User'. Resolve it
+// once per request instead of assuming req.user.userId is interchangeable.
+async function resolveLawyerProfile(req) {
+  const lawyer = await Lawyer.findOne({ userId: req.user.userId });
+  if (!lawyer) throw new AppError('Lawyer profile not found.', 404);
+  return lawyer;
+}
+
+// POST /api/lawyers/me/availability
+exports.setAvailability = asyncHandler(async (req, res) => {
+  const lawyer = await resolveLawyerProfile(req);
+  const { date, slots } = req.body;
+
+  if (!date || !Array.isArray(slots) || slots.length === 0) {
+    throw new AppError('date and a non-empty slots array are required.', 400);
+  }
+
+  const normalizedDate = toUtcMidnight(date);
+  const newSlots = slots.map((s) => ({
+    startTime: new Date(s.startTime),
+    endTime: new Date(s.endTime),
+    isBooked: false,
+    bookingId: null,
+  }));
+
+  let availability = await Availability.findOne({ lawyerId: lawyer._id, date: normalizedDate });
+
+  if (availability) {
+    availability.slots.push(...newSlots);
+    await availability.save();
+  } else {
+    availability = await Availability.create({
+      lawyerId: lawyer._id,
+      date: normalizedDate,
+      slots: newSlots,
+    });
+  }
+
+  return sendSuccess(res, 201, { availability });
+});
+
+// GET /api/lawyers/me/availability?from=&to=
+exports.getMyAvailability = asyncHandler(async (req, res) => {
+  const lawyer = await resolveLawyerProfile(req);
+  const { from, to } = req.query;
+
+  const filter = { lawyerId: lawyer._id };
+  if (from || to) {
+    filter.date = {};
+    if (from) filter.date.$gte = toUtcMidnight(from);
+    if (to) filter.date.$lte = toUtcMidnight(to);
+  }
+
+  const availability = await Availability.find(filter).sort({ date: 1 });
+  return sendSuccess(res, 200, { availability });
+});
+
+// PATCH /api/lawyers/me/availability/:availabilityId/slots/:slotId
+exports.updateSlot = asyncHandler(async (req, res) => {
+  const lawyer = await resolveLawyerProfile(req);
+  const { availabilityId, slotId } = req.params;
+
+  const availability = await Availability.findOne({ _id: availabilityId, lawyerId: lawyer._id });
+  if (!availability) {
+    throw new AppError('Availability not found.', 404);
+  }
+
+  const slot = availability.slots.id(slotId);
+  if (!slot) {
+    throw new AppError('Slot not found.', 404);
+  }
+  if (slot.isBooked) {
+    throw new AppError('Cannot edit a slot that is already booked.', 409);
+  }
+
+  if (req.body.startTime) slot.startTime = new Date(req.body.startTime);
+  if (req.body.endTime) slot.endTime = new Date(req.body.endTime);
+
+  await availability.save();
+  return sendSuccess(res, 200, { availability });
+});
+
+// DELETE /api/lawyers/me/availability/:availabilityId/slots/:slotId
+exports.deleteSlot = asyncHandler(async (req, res) => {
+  const lawyer = await resolveLawyerProfile(req);
+  const { availabilityId, slotId } = req.params;
+
+  const availability = await Availability.findOne({ _id: availabilityId, lawyerId: lawyer._id });
+  if (!availability) {
+    throw new AppError('Availability not found.', 404);
+  }
+
+  const slot = availability.slots.id(slotId);
+  if (!slot) {
+    throw new AppError('Slot not found.', 404);
+  }
+  if (slot.isBooked) {
+    throw new AppError('Cannot delete a slot that is already booked.', 409);
+  }
+
+  slot.deleteOne();
+  await availability.save();
+
+  return sendSuccess(res, 200, { message: 'Slot deleted.' });
+});
 // const Payment = require('../models/payment');
 
 // // GET /api/lawyers/me/earnings
@@ -76,128 +194,128 @@
 //     return res.status(500).json({ message: 'Could not fetch payment.', error: err.message });
 //   }
 // };
-const Availability = require('../models/availibility');
+// const Availability = require('../models/availibility');
 
-// helper: normalize any date input to UTC midnight, matching the model's convention
-function toUtcMidnight(dateInput) {
-  const d = new Date(dateInput);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
+// // helper: normalize any date input to UTC midnight, matching the model's convention
+// function toUtcMidnight(dateInput) {
+//   const d = new Date(dateInput);
+//   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+// }
 
-// POST /api/lawyers/me/availability
-// body: { date: "2026-07-20", slots: [{ startTime: "2026-07-20T09:00:00Z", endTime: "2026-07-20T09:30:00Z" }, ...] }
-exports.setAvailability = async (req, res) => {
-  try {
-    const lawyerId = req.user.userId;
-    const { date, slots } = req.body;
+// // POST /api/lawyers/me/availability
+// // body: { date: "2026-07-20", slots: [{ startTime: "2026-07-20T09:00:00Z", endTime: "2026-07-20T09:30:00Z" }, ...] }
+// exports.setAvailability = async (req, res) => {
+//   try {
+//     const lawyerId = req.user.userId;
+//     const { date, slots } = req.body;
 
-    if (!date || !Array.isArray(slots) || slots.length === 0) {
-      return res.status(400).json({ message: 'date and a non-empty slots array are required.' });
-    }
+//     if (!date || !Array.isArray(slots) || slots.length === 0) {
+//       return res.status(400).json({ message: 'date and a non-empty slots array are required.' });
+//     }
 
-    const normalizedDate = toUtcMidnight(date);
+//     const normalizedDate = toUtcMidnight(date);
 
-    const newSlots = slots.map(s => ({
-      startTime: new Date(s.startTime),
-      endTime: new Date(s.endTime),
-      isBooked: false,
-      bookingId: null,
-    }));
+//     const newSlots = slots.map(s => ({
+//       startTime: new Date(s.startTime),
+//       endTime: new Date(s.endTime),
+//       isBooked: false,
+//       bookingId: null,
+//     }));
 
-    // unique index on {lawyerId, date} — upsert so re-posting the same date appends slots
-    let availability = await Availability.findOne({ lawyerId, date: normalizedDate });
+//     // unique index on {lawyerId, date} — upsert so re-posting the same date appends slots
+//     let availability = await Availability.findOne({ lawyerId, date: normalizedDate });
 
-    if (availability) {
-      availability.slots.push(...newSlots);
-      await availability.save();
-    } else {
-      availability = await Availability.create({
-        lawyerId,
-        date: normalizedDate,
-        slots: newSlots,
-      });
-    }
+//     if (availability) {
+//       availability.slots.push(...newSlots);
+//       await availability.save();
+//     } else {
+//       availability = await Availability.create({
+//         lawyerId,
+//         date: normalizedDate,
+//         slots: newSlots,
+//       });
+//     }
 
-    return res.status(201).json({ availability });
-  } catch (err) {
-    return res.status(500).json({ message: 'Could not set availability.', error: err.message });
-  }
-};
+//     return res.status(201).json({ availability });
+//   } catch (err) {
+//     return res.status(500).json({ message: 'Could not set availability.', error: err.message });
+//   }
+// };
 
-// GET /api/lawyers/me/availability?from=2026-07-01&to=2026-07-31
-exports.getMyAvailability = async (req, res) => {
-  try {
-    const lawyerId = req.user.userId;
-    const { from, to } = req.query;
+// // GET /api/lawyers/me/availability?from=2026-07-01&to=2026-07-31
+// exports.getMyAvailability = async (req, res) => {
+//   try {
+//     const lawyerId = req.user.userId;
+//     const { from, to } = req.query;
 
-    const filter = { lawyerId };
-    if (from || to) {
-      filter.date = {};
-      if (from) filter.date.$gte = toUtcMidnight(from);
-      if (to) filter.date.$lte = toUtcMidnight(to);
-    }
+//     const filter = { lawyerId };
+//     if (from || to) {
+//       filter.date = {};
+//       if (from) filter.date.$gte = toUtcMidnight(from);
+//       if (to) filter.date.$lte = toUtcMidnight(to);
+//     }
 
-    const availability = await Availability.find(filter).sort({ date: 1 });
-    return res.status(200).json({ availability });
-  } catch (err) {
-    return res.status(500).json({ message: 'Could not fetch availability.', error: err.message });
-  }
-};
+//     const availability = await Availability.find(filter).sort({ date: 1 });
+//     return res.status(200).json({ availability });
+//   } catch (err) {
+//     return res.status(500).json({ message: 'Could not fetch availability.', error: err.message });
+//   }
+// };
 
-// PATCH /api/lawyers/me/availability/:availabilityId/slots/:slotId
-// body: { startTime?, endTime? }
-exports.updateSlot = async (req, res) => {
-  try {
-    const { availabilityId, slotId } = req.params;
-    const lawyerId = req.user.userId;
+// // PATCH /api/lawyers/me/availability/:availabilityId/slots/:slotId
+// // body: { startTime?, endTime? }
+// exports.updateSlot = async (req, res) => {
+//   try {
+//     const { availabilityId, slotId } = req.params;
+//     const lawyerId = req.user.userId;
 
-    const availability = await Availability.findOne({ _id: availabilityId, lawyerId });
-    if (!availability) {
-      return res.status(404).json({ message: 'Availability not found.' });
-    }
+//     const availability = await Availability.findOne({ _id: availabilityId, lawyerId });
+//     if (!availability) {
+//       return res.status(404).json({ message: 'Availability not found.' });
+//     }
 
-    const slot = availability.slots.id(slotId);
-    if (!slot) {
-      return res.status(404).json({ message: 'Slot not found.' });
-    }
-    if (slot.isBooked) {
-      return res.status(409).json({ message: 'Cannot edit a slot that is already booked.' });
-    }
+//     const slot = availability.slots.id(slotId);
+//     if (!slot) {
+//       return res.status(404).json({ message: 'Slot not found.' });
+//     }
+//     if (slot.isBooked) {
+//       return res.status(409).json({ message: 'Cannot edit a slot that is already booked.' });
+//     }
 
-    if (req.body.startTime) slot.startTime = new Date(req.body.startTime);
-    if (req.body.endTime) slot.endTime = new Date(req.body.endTime);
+//     if (req.body.startTime) slot.startTime = new Date(req.body.startTime);
+//     if (req.body.endTime) slot.endTime = new Date(req.body.endTime);
 
-    await availability.save();
-    return res.status(200).json({ availability });
-  } catch (err) {
-    return res.status(500).json({ message: 'Could not update slot.', error: err.message });
-  }
-};
+//     await availability.save();
+//     return res.status(200).json({ availability });
+//   } catch (err) {
+//     return res.status(500).json({ message: 'Could not update slot.', error: err.message });
+//   }
+// };
 
-// DELETE /api/lawyers/me/availability/:availabilityId/slots/:slotId
-exports.deleteSlot = async (req, res) => {
-  try {
-    const { availabilityId, slotId } = req.params;
-    const lawyerId = req.user.userId;
+// // DELETE /api/lawyers/me/availability/:availabilityId/slots/:slotId
+// exports.deleteSlot = async (req, res) => {
+//   try {
+//     const { availabilityId, slotId } = req.params;
+//     const lawyerId = req.user.userId;
 
-    const availability = await Availability.findOne({ _id: availabilityId, lawyerId });
-    if (!availability) {
-      return res.status(404).json({ message: 'Availability not found.' });
-    }
+//     const availability = await Availability.findOne({ _id: availabilityId, lawyerId });
+//     if (!availability) {
+//       return res.status(404).json({ message: 'Availability not found.' });
+//     }
 
-    const slot = availability.slots.id(slotId);
-    if (!slot) {
-      return res.status(404).json({ message: 'Slot not found.' });
-    }
-    if (slot.isBooked) {
-      return res.status(409).json({ message: 'Cannot delete a slot that is already booked.' });
-    }
+//     const slot = availability.slots.id(slotId);
+//     if (!slot) {
+//       return res.status(404).json({ message: 'Slot not found.' });
+//     }
+//     if (slot.isBooked) {
+//       return res.status(409).json({ message: 'Cannot delete a slot that is already booked.' });
+//     }
 
-    slot.deleteOne();
-    await availability.save();
+//     slot.deleteOne();
+//     await availability.save();
 
-    return res.status(200).json({ message: 'Slot deleted.' });
-  } catch (err) {
-    return res.status(500).json({ message: 'Could not delete slot.', error: err.message });
-  }
-};
+//     return res.status(200).json({ message: 'Slot deleted.' });
+//   } catch (err) {
+//     return res.status(500).json({ message: 'Could not delete slot.', error: err.message });
+//   }
+// };

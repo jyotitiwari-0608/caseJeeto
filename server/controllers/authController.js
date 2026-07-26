@@ -1,3 +1,5 @@
+// // authController.js
+
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
@@ -24,246 +26,479 @@ function signRefreshToken(user) {
 }
 
 // POST /api/auth/register
-// Creates User + the matching role profile (Client or Lawyer) in one call
-// so the frontend never has to make two requests to finish signup.
 exports.register = async (req, res) => {
-    try {
-      const { name, email, phone, password, role } = req.body;
-  
-      if (!name || !email || !phone || !password || !role) {
-        return res.status(400).json({
-          message: "Missing required fields.",
-        });
-      }
-  
-      if (!["client", "lawyer"].includes(role)) {
-        return res.status(400).json({
-          message: "Invalid role.",
-        });
-      }
-  
-      const existing = await User.findOne({
-        $or: [{ email }, { phone }],
-      });
-  
-      if (existing) {
-        return res.status(409).json({
-          message: "Email or phone already registered.",
-        });
-      }
-  
-      const passwordHash = await bcrypt.hash(password, 12);
-  
-      const user = await User.create({
-        name,
-        email,
-        phone,
-        passwordHash,
-        role,
-      });
-  
-      if (role === "client") {
-        await Client.create({
-          userId: user._id,
-        });
-      } else {
-        await Lawyer.create({
-          userId: user._id,
-          specialization: [],
-          yearsOfExperience: 0,
-          consultationFee: 0,
-        });
-      }
-  
-      const accessToken = signAccessToken(user);
-      const refreshToken = signRefreshToken(user);
-  
-      user.refreshToken = await bcrypt.hash(refreshToken, 12);
-      await user.save();
-  
-      return res.status(201).json({
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-        },
-        accessToken,
-        refreshToken,
-      });
-    } catch (err) {
-      return res.status(500).json({
-        message: "Registration failed.",
-        error: err.message,
+  try {
+    const { name, email, phone, password, role } = req.body;
+
+    if (!name || !email || !phone || !password || !role) {
+      return res.status(400).json({ message: "Missing required fields." });
+    }
+
+    if (!["client", "lawyer"].includes(role)) {
+      return res.status(400).json({ message: "Invalid role." });
+    }
+
+    const existing = await User.findOne({ $or: [{ email }, { phone }] });
+    if (existing) {
+      return res.status(409).json({ message: "Email or phone already registered." });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const user = await User.create({ name, email, phone, passwordHash, role });
+
+    if (role === "client") {
+      await Client.create({ userId: user._id });
+    } else {
+      await Lawyer.create({
+        userId: user._id,
+        specialization: [],
+        yearsOfExperience: 0,
+        consultationFee: 0,
       });
     }
-  };
 
+    const accessToken = signAccessToken(user);
+    const refreshToken = signRefreshToken(user);
 
+    // CHANGED: schema is `refreshTokens: [ { tokenHash, device, createdAt } ]`,
+    // not a single `refreshToken` string. Push a new session entry instead
+    // of overwriting a field that doesn't exist on the model.
+    const tokenHash = await bcrypt.hash(refreshToken, 12);
+    user.refreshTokens.push({
+      tokenHash,
+      device: req.headers['user-agent'] || 'unknown',
+    });
+    await user.save();
 
-  exports.login = async (req, res) => {
-    try {
-      const { email, password } = req.body;
-  
-      if (!email || !password) {
-        return res.status(400).json({
-          message: "Email and password are required.",
-        });
-      }
-  
-      const user = await User.findOne({ email }).select(
-        "+passwordHash +refreshToken"
-      );
-  
-      if (!user || !user.isActive) {
-        return res.status(401).json({
-          message: "Invalid credentials.",
-        });
-      }
-  
-      const isMatch = await bcrypt.compare(
-        password,
-        user.passwordHash
-      );
-  
-      if (!isMatch) {
-        return res.status(401).json({
-          message: "Invalid credentials.",
-        });
-      }
-  
-      user.lastLogin = new Date();
-  
-      const accessToken = signAccessToken(user);
-      const refreshToken = signRefreshToken(user);
-  
-      user.refreshToken = await bcrypt.hash(refreshToken, 12);
-  
-      await user.save();
-  
-      return res.status(200).json({
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-        },
-        accessToken,
-        refreshToken,
-      });
-    } catch (err) {
-      return res.status(500).json({
-        message: "Login failed.",
-        error: err.message,
-      });
+    return res.status(201).json({
+      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      accessToken,
+      refreshToken,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Registration failed.", error: err.message });
+  }
+};
+
+// POST /api/auth/login
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required." });
     }
-  };
 
-  
-  exports.refreshToken = async (req, res) => {
-    try {
-      const { refreshToken } = req.body;
-  
-      if (!refreshToken) {
-        return res.status(400).json({
-          message: "Refresh token is required.",
-        });
-      }
-  
-      let payload;
-  
-      try {
-        payload = jwt.verify(
-          refreshToken,
-          process.env.JWT_REFRESH_SECRET
-        );
-      } catch {
-        return res.status(401).json({
-          message: "Invalid or expired refresh token.",
-        });
-      }
-  
-      const user = await User.findById(payload.userId).select(
-        "+refreshToken"
-      );
-  
-      if (!user || !user.isActive) {
-        return res.status(401).json({
-          message: "User no longer active.",
-        });
-      }
-  
-      if (!user.refreshToken) {
-        return res.status(401).json({
-          message: "Refresh token revoked.",
-        });
-      }
-  
-      const valid = await bcrypt.compare(
-        refreshToken,
-        user.refreshToken
-      );
-  
-      if (!valid) {
-        return res.status(401).json({
-          message: "Invalid refresh token.",
-        });
-      }
-  
-      const newAccessToken = signAccessToken(user);
-  
-      return res.status(200).json({
-        accessToken: newAccessToken,
-      });
-    } catch (err) {
-      return res.status(500).json({
-        message: "Could not refresh token.",
-        error: err.message,
-      });
+    const user = await User.findOne({ email }).select("+passwordHash");
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ message: "Invalid credentials." });
     }
-  };
 
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials." });
+    }
 
+    user.lastLogin = new Date();
 
-  exports.logout = async (req, res) => {
+    const accessToken = signAccessToken(user);
+    const refreshToken = signRefreshToken(user);
+
+    const tokenHash = await bcrypt.hash(refreshToken, 12);
+    user.refreshTokens.push({
+      tokenHash,
+      device: req.headers['user-agent'] || 'unknown',
+    });
+
+    await user.save();
+
+    return res.status(200).json({
+      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      accessToken,
+      refreshToken,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Login failed.", error: err.message });
+  }
+};
+
+// POST /api/auth/refresh-token
+exports.refreshToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({ message: "Refresh token is required." });
+    }
+
+    let payload;
     try {
-      const { refreshToken } = req.body;
-  
-      if (!refreshToken) {
-        return res.status(400).json({
-          message: "Refresh token is required.",
-        });
+      payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch {
+      return res.status(401).json({ message: "Invalid or expired refresh token." });
+    }
+
+    const user = await User.findById(payload.userId).select("+refreshTokens.tokenHash");
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ message: "User no longer active." });
+    }
+
+    // Find which stored session this refresh token belongs to. Each entry
+    // has its own bcrypt salt, so we have to compare against each one —
+    // there's no way to look it up by equality.
+    let matchedIndex = -1;
+    for (let i = 0; i < user.refreshTokens.length; i++) {
+      const isMatch = await bcrypt.compare(refreshToken, user.refreshTokens[i].tokenHash);
+      if (isMatch) {
+        matchedIndex = i;
+        break;
       }
-  
-      let payload;
-  
-      try {
-        payload = jwt.verify(
-          refreshToken,
-          process.env.JWT_REFRESH_SECRET
-        );
-      } catch {
-        return res.status(401).json({
-          message: "Invalid refresh token.",
-        });
+    }
+
+    if (matchedIndex === -1) {
+      return res.status(401).json({ message: "Refresh token revoked or invalid." });
+    }
+
+    // Rotate: swap in a new refresh token for this same session so a
+    // captured/replayed old token stops working after this call.
+    const newAccessToken = signAccessToken(user);
+    const newRefreshToken = signRefreshToken(user);
+    user.refreshTokens[matchedIndex].tokenHash = await bcrypt.hash(newRefreshToken, 12);
+    await user.save();
+
+    return res.status(200).json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Could not refresh token.", error: err.message });
+  }
+};
+
+// POST /api/auth/logout
+exports.logout = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({ message: "Refresh token is required." });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch {
+      // Already invalid/expired — nothing to revoke, but don't error the
+      // logout flow over it.
+      return res.status(200).json({ message: "Logged out successfully." });
+    }
+
+    const user = await User.findById(payload.userId).select("+refreshTokens.tokenHash");
+
+    if (user) {
+      // Only remove THIS device's session, not every logged-in device.
+      let matchedIndex = -1;
+      for (let i = 0; i < user.refreshTokens.length; i++) {
+        const isMatch = await bcrypt.compare(refreshToken, user.refreshTokens[i].tokenHash);
+        if (isMatch) {
+          matchedIndex = i;
+          break;
+        }
       }
-  
-      const user = await User.findById(payload.userId).select(
-        "+refreshToken"
-      );
-  
-      if (user) {
-        user.refreshToken = null;
+      if (matchedIndex !== -1) {
+        user.refreshTokens.splice(matchedIndex, 1);
         await user.save();
       }
-  
-      return res.status(200).json({
-        message: "Logged out successfully.",
-      });
-    } catch (err) {
-      return res.status(500).json({
-        message: "Logout failed.",
-        error: err.message,
-      });
     }
-  };
+
+    return res.status(200).json({ message: "Logged out successfully." });
+  } catch (err) {
+    return res.status(500).json({ message: "Logout failed.", error: err.message });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+// const bcrypt = require('bcryptjs');
+// const jwt = require('jsonwebtoken');
+// const User = require('../models/user');
+// const Client = require('../models/client');
+// const Lawyer = require('../models/lawyer');
+
+// const ACCESS_TOKEN_TTL = '15m';
+// const REFRESH_TOKEN_TTL = '30d';
+
+// function signAccessToken(user) {
+//   return jwt.sign(
+//     { userId: user._id, role: user.role },
+//     process.env.JWT_ACCESS_SECRET,
+//     { expiresIn: ACCESS_TOKEN_TTL }
+//   );
+// }
+
+// function signRefreshToken(user) {
+//   return jwt.sign(
+//     { userId: user._id },
+//     process.env.JWT_REFRESH_SECRET,
+//     { expiresIn: REFRESH_TOKEN_TTL }
+//   );
+// }
+
+// // POST /api/auth/register
+// // Creates User + the matching role profile (Client or Lawyer) in one call
+// // so the frontend never has to make two requests to finish signup.
+// exports.register = async (req, res) => {
+//     try {
+//       const { name, email, phone, password, role } = req.body;
+  
+//       if (!name || !email || !phone || !password || !role) {
+//         return res.status(400).json({
+//           message: "Missing required fields.",
+//         });
+//       }
+  
+//       if (!["client", "lawyer"].includes(role)) {
+//         return res.status(400).json({
+//           message: "Invalid role.",
+//         });
+//       }
+  
+//       const existing = await User.findOne({
+//         $or: [{ email }, { phone }],
+//       });
+  
+//       if (existing) {
+//         return res.status(409).json({
+//           message: "Email or phone already registered.",
+//         });
+//       }
+  
+//       const passwordHash = await bcrypt.hash(password, 12);
+  
+//       const user = await User.create({
+//         name,
+//         email,
+//         phone,
+//         passwordHash,
+//         role,
+//       });
+  
+//       if (role === "client") {
+//         await Client.create({
+//           userId: user._id,
+//         });
+//       } else {
+//         await Lawyer.create({
+//           userId: user._id,
+//           specialization: [],
+//           yearsOfExperience: 0,
+//           consultationFee: 0,
+//         });
+//       }
+  
+//       const accessToken = signAccessToken(user);
+//       const refreshToken = signRefreshToken(user);
+  
+//       user.refreshToken = await bcrypt.hash(refreshToken, 12);
+//       await user.save();
+  
+//       return res.status(201).json({
+//         user: {
+//           id: user._id,
+//           name: user.name,
+//           email: user.email,
+//           role: user.role,
+//         },
+//         accessToken,
+//         refreshToken,
+//       });
+//     } catch (err) {
+//       return res.status(500).json({
+//         message: "Registration failed.",
+//         error: err.message,
+//       });
+//     }
+//   };
+
+
+
+//   exports.login = async (req, res) => {
+//     try {
+//       const { email, password } = req.body;
+  
+//       if (!email || !password) {
+//         return res.status(400).json({
+//           message: "Email and password are required.",
+//         });
+//       }
+  
+//       const user = await User.findOne({ email }).select(
+//         "+passwordHash +refreshToken"
+//       );
+  
+//       if (!user || !user.isActive) {
+//         return res.status(401).json({
+//           message: "Invalid credentials.",
+//         });
+//       }
+  
+//       const isMatch = await bcrypt.compare(
+//         password,
+//         user.passwordHash
+//       );
+  
+//       if (!isMatch) {
+//         return res.status(401).json({
+//           message: "Invalid credentials.",
+//         });
+//       }
+  
+//       user.lastLogin = new Date();
+  
+//       const accessToken = signAccessToken(user);
+//       const refreshToken = signRefreshToken(user);
+  
+//       user.refreshToken = await bcrypt.hash(refreshToken, 12);
+  
+//       await user.save();
+  
+//       return res.status(200).json({
+//         user: {
+//           id: user._id,
+//           name: user.name,
+//           email: user.email,
+//           role: user.role,
+//         },
+//         accessToken,
+//         refreshToken,
+//       });
+//     } catch (err) {
+//       return res.status(500).json({
+//         message: "Login failed.",
+//         error: err.message,
+//       });
+//     }
+//   };
+
+  
+//   exports.refreshToken = async (req, res) => {
+//     try {
+//       const { refreshToken } = req.body;
+  
+//       if (!refreshToken) {
+//         return res.status(400).json({
+//           message: "Refresh token is required.",
+//         });
+//       }
+  
+//       let payload;
+  
+//       try {
+//         payload = jwt.verify(
+//           refreshToken,
+//           process.env.JWT_REFRESH_SECRET
+//         );
+//       } catch {
+//         return res.status(401).json({
+//           message: "Invalid or expired refresh token.",
+//         });
+//       }
+  
+//       const user = await User.findById(payload.userId).select(
+//         "+refreshToken"
+//       );
+  
+//       if (!user || !user.isActive) {
+//         return res.status(401).json({
+//           message: "User no longer active.",
+//         });
+//       }
+  
+//       if (!user.refreshToken) {
+//         return res.status(401).json({
+//           message: "Refresh token revoked.",
+//         });
+//       }
+  
+//       const valid = await bcrypt.compare(
+//         refreshToken,
+//         user.refreshToken
+//       );
+  
+//       if (!valid) {
+//         return res.status(401).json({
+//           message: "Invalid refresh token.",
+//         });
+//       }
+  
+//       const newAccessToken = signAccessToken(user);
+  
+//       return res.status(200).json({
+//         accessToken: newAccessToken,
+//       });
+//     } catch (err) {
+//       return res.status(500).json({
+//         message: "Could not refresh token.",
+//         error: err.message,
+//       });
+//     }
+//   };
+
+
+
+//   exports.logout = async (req, res) => {
+//     try {
+//       const { refreshToken } = req.body;
+  
+//       if (!refreshToken) {
+//         return res.status(400).json({
+//           message: "Refresh token is required.",
+//         });
+//       }
+  
+//       let payload;
+  
+//       try {
+//         payload = jwt.verify(
+//           refreshToken,
+//           process.env.JWT_REFRESH_SECRET
+//         );
+//       } catch {
+//         return res.status(401).json({
+//           message: "Invalid refresh token.",
+//         });
+//       }
+  
+//       const user = await User.findById(payload.userId).select(
+//         "+refreshToken"
+//       );
+  
+//       if (user) {
+//         user.refreshToken = null;
+//         await user.save();
+//       }
+  
+//       return res.status(200).json({
+//         message: "Logged out successfully.",
+//       });
+//     } catch (err) {
+//       return res.status(500).json({
+//         message: "Logout failed.",
+//         error: err.message,
+//       });
+//     }
+//   };
+// authController.js

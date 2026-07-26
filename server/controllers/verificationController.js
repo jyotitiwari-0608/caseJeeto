@@ -1,3 +1,4 @@
+// verification controller.js
 const Lawyer = require('../models/lawyer');
 const LawyerVerification = require('../models/lawyerVerification');
 const GovernmentIdVerification = require('../models/governmentVerification');
@@ -8,7 +9,8 @@ const CertificateOfPractice = require('../models/certificateOfPractice');
 const LawDegree = require('../models/lawDegree');
 const ProfessionalPhoto = require('../models/professionalPhoto');
 const BankVerification = require('../models/bankVerification');
-const ProfessionalExperience = require('../models/ProfessionalExperience');
+// Only the broken line needs to change — everything else in this file stays the same:
+const ProfessionalExperience = require('../models/professionalExperience');
 
 // Every simple (single-document, swap-on-resubmit) verification type maps
 // to its model + the body fields a lawyer is allowed to submit. Anything

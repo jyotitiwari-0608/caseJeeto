@@ -1,6 +1,6 @@
 const Lawyer = require('../../models/lawyer');
 const LawyerVerification = require('../../models/lawyerVerification');
-const ProfessionalExperience = require('../../models/ProfessionalExperience');
+const ProfessionalExperience = require('../../models/professionalExperience');
 const { DOCUMENT_TYPES, REQUIRED_FOR_APPROVAL } = require('../../config/verificationDocumentTypes');
 
 // Re-derives the lawyer's overall verification status from the current
