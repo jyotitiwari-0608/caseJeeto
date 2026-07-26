@@ -35,14 +35,17 @@ exports.createRoom = async (booking) => {
 // Meeting tokens scope who can join a private room and for how long.
 // isOwner grants the lawyer host controls (e.g. ending the call for
 // everyone); the client gets a plain participant token.
-exports.createMeetingToken = async (roomName, { userId, name, isOwner = false }) => {
+exports.createMeetingToken = async (
+  roomName,
+  { userId, name, isOwner = false, expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000) }
+) => {
   const { data } = await daily.post('/meeting-tokens', {
     properties: {
       room_name: roomName,
       user_id: String(userId),
       user_name: name,
       is_owner: isOwner,
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 2, // 2 hour token validity
+      exp: Math.floor(new Date(expiresAt).getTime() / 1000),
     },
   });
   return data.token;

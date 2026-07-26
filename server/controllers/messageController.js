@@ -4,6 +4,7 @@ const Client = require('../models/client');
 const asyncHandler = require('../middleware/asyncHandler');
 const AppError = require('../utils/AppError');
 const { sendSuccess, paginationMeta } = require('../utils/apiResponse');
+const { searchableLawyerFilter } = require('../utils/lawyerAccess');
 
 // POST /api/conversations/with/:lawyerId
 // A conversation must exist before the first Socket.IO message can
@@ -12,28 +13,32 @@ const { sendSuccess, paginationMeta } = require('../utils/apiResponse');
 exports.getOrCreateConversation = asyncHandler(async (req, res) => {
   const { lawyerId } = req.params;
 
-  const lawyer = await Lawyer.findById(lawyerId);
+  const lawyer = await Lawyer.findOne(searchableLawyerFilter(lawyerId));
   if (!lawyer) {
     throw new AppError('Lawyer not found.', 404);
   }
 
   const client = await Client.findOne({ userId: req.user.userId });
-  if (client && client.blockedLawyers.some((id) => id.equals(lawyerId))) {
+  if (!client) {
+    throw new AppError('Client profile not found.', 404);
+  }
+  if (client.blockedLawyers.some((id) => id.equals(lawyerId))) {
     throw new AppError('You have blocked this lawyer.', 403);
   }
 
-  let conversation = await Conversation.findOne({
-    clientId: req.user.userId,
-    lawyerId: lawyer.userId,
-  });
-
-  if (!conversation) {
-    conversation = await Conversation.create({
-      clientId: req.user.userId,
-      lawyerId: lawyer.userId,
-      messages: [],
-    });
+  const conversationKey = { clientId: req.user.userId, lawyerId: lawyer.userId };
+  let conversation;
+  try {
+    conversation = await Conversation.findOneAndUpdate(
+      conversationKey,
+      { $setOnInsert: { messages: [] } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+    conversation = await Conversation.findOne(conversationKey);
   }
+  if (!conversation) throw new AppError('Could not create conversation.', 503);
 
   return sendSuccess(res, 200, { conversation });
 });

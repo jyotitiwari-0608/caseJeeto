@@ -9,6 +9,9 @@ const Lawyer = require('../models/lawyer');
 const asyncHandler = require('../middleware/asyncHandler');
 const AppError = require('../utils/AppError');
 const { sendSuccess, paginationMeta } = require('../utils/apiResponse');
+const { enrichBookingsWithLawyerProfiles } = require('../utils/bookingResponse');
+const { searchableLawyerFilter } = require('../utils/lawyerAccess');
+const { durationFromSlot } = require('../utils/bookingRules');
 
 const ALLOWED_TRANSITIONS = {
   pending: ['confirmed', 'cancelled'],
@@ -37,16 +40,11 @@ exports.createBooking = asyncHandler(async (req, res) => {
   // documents are keyed by. Booking/Payment, however, are keyed by the
   // lawyer's USER id (see models/booking.js). Resolve profile -> user id
   // explicitly instead of assuming the two ids are interchangeable.
-  const lawyerProfile = await Lawyer.findById(lawyerId);
-  if (!lawyerProfile) {
-    throw new AppError('Lawyer not found.', 404);
-  }
-
   const client = await Client.findOne({ userId: req.user.userId });
   if (!client) {
     throw new AppError('Client profile not found.', 404);
   }
-  if (client.blockedLawyers.some((id) => id.equals(lawyerProfile._id))) {
+  if (client.blockedLawyers.some((id) => id.equals(lawyerId))) {
     throw new AppError('You have blocked this lawyer.', 403);
   }
 
@@ -54,6 +52,9 @@ exports.createBooking = asyncHandler(async (req, res) => {
   let booking;
   try {
     await session.withTransaction(async () => {
+      const lawyerProfile = await Lawyer.findOne(searchableLawyerFilter(lawyerId)).session(session);
+      if (!lawyerProfile) throw new AppError('Lawyer not found.', 404);
+
       const availability = await Availability.findOne({
         _id: availabilityId,
         lawyerId: lawyerProfile._id, // Availability is keyed by Lawyer PROFILE id
@@ -68,6 +69,10 @@ exports.createBooking = asyncHandler(async (req, res) => {
       if (slot.isBooked) {
         throw new AppError('This slot is already booked.', 409);
       }
+      if (slot.startTime <= new Date()) {
+        throw new AppError('This availability slot has already started.', 409);
+      }
+      const bookingDurationMinutes = durationFromSlot(slot, durationMinutes);
 
       const [created] = await Booking.create(
         [
@@ -75,7 +80,7 @@ exports.createBooking = asyncHandler(async (req, res) => {
             clientId: req.user.userId,
             lawyerId: lawyerProfile.userId, // Booking is keyed by the lawyer's USER id
             scheduledAt: slot.startTime,
-            durationMinutes: durationMinutes || 30,
+            durationMinutes: bookingDurationMinutes,
             status: 'pending',
           },
         ],
@@ -89,20 +94,16 @@ exports.createBooking = asyncHandler(async (req, res) => {
       booking = created;
     });
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 
-  return sendSuccess(res, 201, { booking });
+  const enrichedBooking = await enrichBookingsWithLawyerProfiles(booking);
+  return sendSuccess(res, 201, { booking: enrichedBooking });
 });
 
 // GET /api/bookings/:id
 exports.getBookingById = asyncHandler(async (req, res) => {
-  const booking = await Booking.findById(req.params.id)
-    // lawyerId refs User, not Lawyer — only User fields can be populated
-    // here. If you need profile fields (specialization, fee), fetch the
-    // Lawyer doc separately via `Lawyer.findOne({ userId: booking.lawyerId })`.
-    .populate('lawyerId', 'name email')
-    .populate('clientId', 'name email');
+  const booking = await Booking.findById(req.params.id).populate('clientId', 'name email');
 
   if (!booking) {
     throw new AppError('Booking not found.', 404);
@@ -111,7 +112,8 @@ exports.getBookingById = asyncHandler(async (req, res) => {
     throw new AppError('Not authorized to view this booking.', 403);
   }
 
-  return sendSuccess(res, 200, { booking });
+  const enrichedBooking = await enrichBookingsWithLawyerProfiles(booking);
+  return sendSuccess(res, 200, { booking: enrichedBooking });
 });
 
 // GET /api/bookings?status=&page=&limit=
@@ -123,14 +125,14 @@ exports.getBookings = asyncHandler(async (req, res) => {
 
   const [bookings, total] = await Promise.all([
     Booking.find(filter)
-      .populate('lawyerId', 'name email')
       .sort({ scheduledAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit)),
     Booking.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, 200, { bookings }, paginationMeta({ total, page, limit }));
+  const enrichedBookings = await enrichBookingsWithLawyerProfiles(bookings);
+  return sendSuccess(res, 200, { bookings: enrichedBookings }, paginationMeta({ total, page, limit }));
 });
 
 // PATCH /api/bookings/:id/status
@@ -146,26 +148,7 @@ exports.updateBookingStatus = asyncHandler(async (req, res) => {
     throw new AppError(`Clients cannot set booking status to '${status}'.`, 403);
   }
 
-  const booking = await Booking.findById(req.params.id);
-  if (!booking) {
-    throw new AppError('Booking not found.', 404);
-  }
-  if (!booking.clientId.equals(req.user.userId)) {
-    throw new AppError('Not authorized to update this booking.', 403);
-  }
-
-  const allowed = ALLOWED_TRANSITIONS[booking.status] || [];
-  if (!allowed.includes(status)) {
-    throw new AppError(`Cannot transition booking from '${booking.status}' to '${status}'.`, 400);
-  }
-
-  booking.status = status;
-  await booking.save();
-
-  await Availability.updateOne(
-    { 'slots.bookingId': booking._id },
-    { $set: { 'slots.$.isBooked': false, 'slots.$.bookingId': null } }
-  );
+  const booking = await cancelClientBooking(req.params.id, req.user.userId);
 
   return sendSuccess(res, 200, { booking });
 });
@@ -173,30 +156,43 @@ exports.updateBookingStatus = asyncHandler(async (req, res) => {
 // POST /api/bookings/:id/cancel
 exports.cancelBooking = asyncHandler(async (req, res) => {
   const { reason } = req.body;
-
-  const booking = await Booking.findById(req.params.id);
-  if (!booking) {
-    throw new AppError('Booking not found.', 404);
-  }
-  if (!booking.clientId.equals(req.user.userId)) {
-    throw new AppError('Not authorized to cancel this booking.', 403);
-  }
-  if (!(ALLOWED_TRANSITIONS[booking.status] || []).includes('cancelled')) {
-    throw new AppError(`Cannot cancel a booking in status '${booking.status}'.`, 400);
-  }
-
-  booking.status = 'cancelled';
-  await booking.save();
-
-  await Availability.updateOne(
-    { 'slots.bookingId': booking._id },
-    { $set: { 'slots.$.isBooked': false, 'slots.$.bookingId': null } }
-  );
+  const booking = await cancelClientBooking(req.params.id, req.user.userId);
 
   // Cancellation only flips status — if a payment was already made, the
   // frontend should follow up with POST /api/refunds using this bookingId.
   return sendSuccess(res, 200, { booking, cancellationReason: reason || null });
 });
+
+async function cancelClientBooking(bookingId, clientUserId) {
+  const session = await mongoose.startSession();
+  let booking;
+  try {
+    await session.withTransaction(async () => {
+      booking = await Booking.findById(bookingId).session(session);
+      if (!booking) throw new AppError('Booking not found.', 404);
+      if (!booking.clientId.equals(clientUserId)) {
+        throw new AppError('Not authorized to cancel this booking.', 403);
+      }
+      if (!(ALLOWED_TRANSITIONS[booking.status] || []).includes('cancelled')) {
+        throw new AppError(`Cannot cancel a booking in status '${booking.status}'.`, 400);
+      }
+
+      booking.status = 'cancelled';
+      await booking.save({ session });
+      const slotRelease = await Availability.updateOne(
+        { 'slots.bookingId': booking._id },
+        { $set: { 'slots.$.isBooked': false, 'slots.$.bookingId': null } },
+        { session }
+      );
+      if (slotRelease.modifiedCount !== 1) {
+        throw new AppError('Could not release the booking slot.', 409);
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+  return booking;
+}
 
 
 

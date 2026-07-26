@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const Refund = require('../../models/refund');
 const Payment = require('../../models/payment');
+const { applyRefundIncrement } = require('../../utils/refundRules');
 
 const REVIEWABLE_STATUSES = ['requested', 'under_review'];
 
@@ -101,36 +103,68 @@ exports.reviewRefund = async (req, res) => {
 // webhook exists, refund.processed events should call this same update
 // logic instead of relying on an admin doing it by hand every time.
 exports.markProcessed = async (req, res) => {
+  const session = await mongoose.startSession();
   try {
     const { razorpayRefundId, refundedAmount } = req.body;
 
     if (!razorpayRefundId) {
       return res.status(400).json({ message: 'razorpayRefundId is required.' });
     }
-
-    const refund = await Refund.findById(req.params.id);
-    if (!refund) {
-      return res.status(404).json({ message: 'Refund not found.' });
-    }
-    if (refund.refundStatus !== 'approved') {
-      return res.status(409).json({ message: `Refund must be 'approved' before it can be marked processed.` });
+    if (!Number.isSafeInteger(refundedAmount) || refundedAmount <= 0) {
+      return res.status(400).json({ message: 'refundedAmount must be a positive integer in paise.' });
     }
 
-    refund.refundStatus = 'completed';
-    refund.razorpayRefundId = razorpayRefundId;
-    refund.refundedAt = new Date();
-    await refund.save();
+    let refund;
+    await session.withTransaction(async () => {
+      refund = await Refund.findById(req.params.id).session(session);
+      if (!refund) {
+        const error = new Error('Refund not found.');
+        error.status = 404;
+        throw error;
+      }
 
-    await Payment.findByIdAndUpdate(refund.paymentId, {
-      paymentStatus: 'refunded',
-      refundAmount: refundedAmount || refund.refundAmount,
-      refundReason: refund.refundReason,
-      refundedAt: new Date(),
-      razorpayRefundId,
+      const payment = await Payment.findById(refund.paymentId).session(session);
+      if (!payment) {
+        const error = new Error('Payment not found for refund.');
+        error.status = 404;
+        throw error;
+      }
+
+      if ((payment.processedRefundIds || []).includes(razorpayRefundId)) return;
+      if (!['approved', 'processing'].includes(refund.refundStatus)) {
+        const error = new Error("Refund must be 'approved' or 'processing' before it can be marked processed.");
+        error.status = 409;
+        throw error;
+      }
+      const completedAt = new Date();
+      const refundState = applyRefundIncrement({
+        amount: refundedAmount,
+        currentRefunded: payment.refundAmount || 0,
+        consultationFee: payment.consultationFee,
+        requestedRefund: refund.refundAmount,
+      });
+      refund.refundStatus = refundState.requestCompleted ? 'completed' : 'processing';
+      refund.razorpayRefundId = razorpayRefundId;
+      refund.refundedAt = refundState.requestCompleted ? completedAt : null;
+      payment.paymentStatus = refundState.paymentCompleted ? 'refunded' : 'paid';
+      payment.refundAmount = refundState.cumulativeRefund;
+      payment.refundReason = refund.refundReason;
+      payment.refundedAt = payment.paymentStatus === 'refunded' ? completedAt : null;
+      payment.razorpayRefundId = razorpayRefundId;
+      if (!(payment.processedRefundIds || []).includes(razorpayRefundId)) {
+        if (!payment.processedRefundIds) payment.processedRefundIds = [];
+        payment.processedRefundIds.push(razorpayRefundId);
+      }
+      await refund.save({ session });
+      await payment.save({ session });
     });
 
     return res.status(200).json({ refund });
   } catch (err) {
-    return res.status(500).json({ message: 'Could not mark refund processed.', error: err.message });
+    return res.status(err.status || 500).json({
+      message: err.status ? err.message : 'Could not mark refund processed.',
+    });
+  } finally {
+    await session.endSession();
   }
 };

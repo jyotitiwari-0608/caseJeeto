@@ -53,22 +53,46 @@ exports.requestRefund = asyncHandler(async (req, res) => {
     throw new AppError('No paid payment found for this booking.', 400);
   }
 
-  const existing = await Refund.findOne({ bookingId, refundStatus: { $ne: 'rejected' } });
-  if (existing) {
+  const existing = await Refund.findOne({ paymentId: payment._id });
+  if (existing && existing.refundStatus !== 'rejected') {
     throw new AppError('A refund request already exists for this booking.', 409);
   }
 
-  const refund = await Refund.create({
+  const values = {
     paymentId: payment._id,
     bookingId,
     clientId: req.user.userId,
     lawyerId: booking.lawyerId,
-    refundAmount: payment.consultationFee, // full amount by default; admin can adjust on approval
+    refundAmount: payment.consultationFee,
     refundReason,
     refundNote,
-    reasonVerification: { evidence },
+    reasonVerification: { evidence, verifiedBy: null, verifiedAt: null, attachments: [] },
     refundStatus: 'requested',
-  });
+    approvedBy: null,
+    approvedAt: null,
+    razorpayRefundId: null,
+    refundedAt: null,
+    failureReason: null,
+  };
+
+  let refund;
+  if (existing) {
+    refund = await Refund.findOneAndUpdate(
+      { _id: existing._id, refundStatus: 'rejected' },
+      { $set: values },
+      { new: true, runValidators: true }
+    );
+    if (!refund) throw new AppError('A refund request already exists for this booking.', 409);
+  } else {
+    try {
+      refund = await Refund.create(values);
+    } catch (err) {
+      if (err?.code === 11000) {
+        throw new AppError('A refund request already exists for this booking.', 409);
+      }
+      throw err;
+    }
+  }
 
   return sendSuccess(res, 201, { refund });
 });

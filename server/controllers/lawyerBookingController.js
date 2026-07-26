@@ -1,4 +1,5 @@
 // lawyerBookingController.js
+const mongoose = require('mongoose');
 const Booking = require('../models/booking');
 const Availability = require('../models/availibility');
 const Lawyer = require('../models/lawyer');
@@ -49,25 +50,44 @@ exports.getBookingById = asyncHandler(async (req, res) => {
 
 // PATCH /api/lawyers/me/bookings/:id/complete
 exports.markCompleted = asyncHandler(async (req, res) => {
-  const booking = await Booking.findById(req.params.id);
+  const session = await mongoose.startSession();
+  let booking;
+  try {
+    await session.withTransaction(async () => {
+      booking = await Booking.findOneAndUpdate(
+        {
+          _id: req.params.id,
+          lawyerId: req.user.userId,
+          status: 'confirmed',
+        },
+        { $set: { status: 'completed' } },
+        { new: true, session, runValidators: true }
+      );
 
-  if (!booking) throw new AppError('Booking not found.', 404);
-  if (!booking.lawyerId.equals(req.user.userId)) {
-    throw new AppError('Not authorized to update this booking.', 403);
+      if (!booking) {
+        const existing = await Booking.findById(req.params.id).session(session);
+        if (!existing) throw new AppError('Booking not found.', 404);
+        if (!existing.lawyerId.equals(req.user.userId)) {
+          throw new AppError('Not authorized to update this booking.', 403);
+        }
+        throw new AppError(
+          `Cannot mark a booking as completed from status '${existing.status}'.`,
+          400
+        );
+      }
+
+      const lawyerUpdate = await Lawyer.updateOne(
+        { userId: req.user.userId },
+        { $inc: { totalConsultations: 1 } },
+        { session }
+      );
+      if (lawyerUpdate.matchedCount !== 1) {
+        throw new AppError('Lawyer profile not found.', 404);
+      }
+    });
+  } finally {
+    await session.endSession();
   }
-
-  const allowed = ALLOWED_TRANSITIONS[booking.status] || [];
-  if (!allowed.includes('completed')) {
-    throw new AppError(`Cannot mark a booking as completed from status '${booking.status}'.`, 400);
-  }
-
-  booking.status = 'completed';
-  await booking.save();
-
-  // CHANGED: booking.lawyerId is the lawyer's USER id, not a Lawyer
-  // profile _id — Lawyer.findByIdAndUpdate(booking.lawyerId, ...) was
-  // looking up the wrong collection key and silently updating nothing.
-  await Lawyer.findOneAndUpdate({ userId: booking.lawyerId }, { $inc: { totalConsultations: 1 } });
 
   return sendSuccess(res, 200, { booking });
 });
@@ -75,25 +95,33 @@ exports.markCompleted = asyncHandler(async (req, res) => {
 // POST /api/lawyers/me/bookings/:id/cancel
 exports.cancelBooking = asyncHandler(async (req, res) => {
   const { reason } = req.body;
+  const session = await mongoose.startSession();
+  let booking;
+  try {
+    await session.withTransaction(async () => {
+      booking = await Booking.findById(req.params.id).session(session);
+      if (!booking) throw new AppError('Booking not found.', 404);
+      if (!booking.lawyerId.equals(req.user.userId)) {
+        throw new AppError('Not authorized to cancel this booking.', 403);
+      }
+      if (!(ALLOWED_TRANSITIONS[booking.status] || []).includes('cancelled')) {
+        throw new AppError(`Cannot cancel a booking in status '${booking.status}'.`, 400);
+      }
 
-  const booking = await Booking.findById(req.params.id);
-  if (!booking) {
-    throw new AppError('Booking not found.', 404);
+      booking.status = 'cancelled';
+      await booking.save({ session });
+      const slotRelease = await Availability.updateOne(
+        { 'slots.bookingId': booking._id },
+        { $set: { 'slots.$.isBooked': false, 'slots.$.bookingId': null } },
+        { session }
+      );
+      if (slotRelease.modifiedCount !== 1) {
+        throw new AppError('Could not release the booking slot.', 409);
+      }
+    });
+  } finally {
+    await session.endSession();
   }
-  if (!booking.lawyerId.equals(req.user.userId)) {
-    throw new AppError('Not authorized to cancel this booking.', 403);
-  }
-  if (!(ALLOWED_TRANSITIONS[booking.status] || []).includes('cancelled')) {
-    throw new AppError(`Cannot cancel a booking in status '${booking.status}'.`, 400);
-  }
-
-  booking.status = 'cancelled';
-  await booking.save();
-
-  await Availability.updateOne(
-    { 'slots.bookingId': booking._id },
-    { $set: { 'slots.$.isBooked': false, 'slots.$.bookingId': null } }
-  );
 
   // Mirrors client-side cancelBooking in bookingController.js: status flip
   // only, no automatic refund. If a payment was made, that has to be

@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="CaseJeeto appointment-first legal marketplace design prototype">
+  <title>CaseJeeto — Find and book the right advocate</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #102a43;
+      --navy-strong: #081f33;
+      --navy-soft: #eaf0f5;
+      --coral: #e25a43;
+      --coral-dark: #bd3f2d;
+      --coral-soft: #fff0ec;
+      --mint: #dff5ea;
+      --mint-ink: #176743;
+      --canvas: #f6f7f8;
+      --surface: #ffffff;
+      --surface-soft: #f0f3f5;
+      --ink: #14212b;
+      --muted: #60707e;
+      --line: #dce3e8;
+      --line-strong: #bdc9d2;
+      --shadow: 0 24px 64px rgba(16, 42, 67, .12);
+      --shadow-small: 0 8px 24px rgba(16, 42, 67, .08);
+      --radius-sm: 10px;
+      --radius: 16px;
+      --radius-lg: 24px;
+      --page: clamp(1rem, 4vw, 4.5rem);
+      --ease: cubic-bezier(.22, 1, .36, 1);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); line-height: 1.5; }
+    body, button, input, select { font: inherit; }
+    h1, h2, h3, p { margin-top: 0; }
+    button, input, select, a { -webkit-tap-highlight-color: transparent; }
+    button { color: inherit; }
+    a { color: inherit; text-decoration: none; }
+    svg { flex: 0 0 auto; }
+    :focus-visible { outline: 3px solid rgba(226, 90, 67, .52); outline-offset: 3px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .wrap { width: min(100%, 1440px); margin-inline: auto; padding-inline: var(--page); }
+    .eyebrow { display: inline-flex; align-items: center; gap: .5rem; color: var(--coral-dark); font-size: .75rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .eyebrow::before { content: ""; width: 22px; height: 2px; background: currentColor; }
+
+    .button {
+      min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: .6rem;
+      padding: .72rem 1rem; border: 1px solid var(--navy); border-radius: var(--radius-sm);
+      background: var(--navy); color: white; font-weight: 750; cursor: pointer;
+      transition: transform 160ms var(--ease), box-shadow 160ms var(--ease), background 160ms ease;
+    }
+    .button.coral { border-color: var(--coral); background: var(--coral); }
+    .button.ghost { border-color: var(--line-strong); background: var(--surface); color: var(--navy); }
+    .button.text { min-height: 44px; padding-inline: .3rem; border-color: transparent; background: transparent; color: var(--navy); }
+    .button:active { transform: scale(.98); }
+    .button-icon { transition: transform 160ms var(--ease); }
+    .skip-link { position: fixed; z-index: 100; left: 1rem; top: .75rem; transform: translateY(-150%); padding: .7rem 1rem; border-radius: 8px; background: var(--navy); color: white; }
+    .skip-link:focus { transform: translateY(0); }
+
+    .prototype-bar { min-height: 30px; display: flex; align-items: center; justify-content: center; padding: .25rem var(--page); background: var(--navy-strong); color: #dce8f1; font-size: .73rem; font-weight: 650; text-align: center; }
+    header { position: sticky; z-index: 30; top: 0; border-bottom: 1px solid rgba(220, 227, 232, .9); background: rgba(255,255,255,.92); backdrop-filter: blur(16px); }
+    .nav { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
+    .brand { min-height: 44px; display: inline-flex; align-items: center; gap: .7rem; color: var(--navy); font-size: 1.2rem; font-weight: 850; letter-spacing: -.03em; }
+    .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--navy); color: white; box-shadow: inset 0 -3px 0 rgba(0,0,0,.16); }
+    .nav-links { display: flex; align-items: center; gap: .15rem; }
+    .nav-links a { min-height: 44px; display: inline-flex; align-items: center; padding: .55rem .85rem; border-radius: 8px; color: #425463; font-size: .9rem; font-weight: 650; transition: background 150ms ease, color 150ms ease; }
+    .nav-actions { display: flex; align-items: center; gap: .65rem; }
+    .menu-button { width: 44px; height: 44px; display: none; place-items: center; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); cursor: pointer; }
+
+    .hero { overflow: hidden; position: relative; background: linear-gradient(180deg, #fff 0%, #f7f9fb 100%); }
+    .hero::before { content: ""; position: absolute; width: 440px; height: 440px; right: -180px; top: -220px; border-radius: 50%; background: radial-gradient(circle, rgba(226,90,67,.11), transparent 68%); pointer-events: none; }
+    .hero-grid { min-height: 680px; display: grid; grid-template-columns: minmax(0, .9fr) minmax(33rem, 1.1fr); gap: clamp(3rem, 7vw, 7rem); align-items: center; padding-block: clamp(4rem, 8vw, 7rem); }
+    .hero-copy { animation: rise 520ms var(--ease) both; }
+    .hero-copy h1 { max-width: 690px; margin: 1.15rem 0 1.2rem; color: var(--navy-strong); font-size: clamp(2.65rem, 5.2vw, 4.85rem); line-height: 1.02; letter-spacing: -.055em; font-weight: 820; }
+    .hero-copy > p { max-width: 610px; margin-bottom: 1.6rem; color: var(--muted); font-size: clamp(1.02rem, 1.5vw, 1.22rem); }
+    .audience-switch { width: fit-content; display: flex; gap: .35rem; margin-bottom: 1.45rem; padding: .3rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+    .audience-switch button { min-height: 40px; padding: .5rem .8rem; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: .84rem; font-weight: 750; cursor: pointer; }
+    .audience-switch button[aria-pressed="true"] { background: var(--surface); color: var(--navy); box-shadow: 0 2px 8px rgba(16,42,67,.1); }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+    .trust-line { display: flex; flex-wrap: wrap; gap: .7rem 1.2rem; margin-top: 1.4rem; color: #526472; font-size: .8rem; }
+    .trust-line span { display: inline-flex; align-items: center; gap: .42rem; }
+    .trust-line svg { color: var(--mint-ink); }
+
+    .booking-panel { position: relative; animation: rise 520ms var(--ease) 80ms both; }
+    .panel-orbit { position: absolute; inset: -18px -24px auto auto; width: 112px; height: 112px; border: 1px dashed #c7d1d9; border-radius: 50%; animation: spin 22s linear infinite; }
+    .panel-orbit::after { content: ""; position: absolute; left: 17px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 5px var(--coral-soft); }
+    .booking-card { position: relative; padding: clamp(1.2rem, 3vw, 2rem); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
+    .booking-head { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1.3rem; }
+    .booking-head h2 { margin: 0 0 .3rem; color: var(--navy); font-size: 1.35rem; letter-spacing: -.02em; }
+    .booking-head p { margin: 0; color: var(--muted); font-size: .84rem; }
+    .step-count { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--navy-soft); color: var(--navy); font-size: .8rem; font-weight: 850; }
+    .service-label { margin-bottom: .65rem; font-size: .78rem; font-weight: 800; }
+    .service-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .55rem; margin-bottom: 1rem; }
+    .service-chip { min-height: 68px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: .25rem; padding: .7rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--navy); cursor: pointer; text-align: left; transition: border-color 150ms ease, background 150ms ease, transform 150ms var(--ease); }
+    .service-chip small { color: var(--muted); font-size: .68rem; }
+    .service-chip[aria-pressed="true"] { border-color: var(--coral); background: var(--coral-soft); box-shadow: inset 0 0 0 1px var(--coral); }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+    .field { display: flex; flex-direction: column; gap: .4rem; }
+    .field span { color: #40515e; font-size: .75rem; font-weight: 750; }
+    .field select, .field input { width: 100%; min-height: 48px; padding: 0 .8rem; border: 1px solid var(--line-strong); border-radius: 10px; background: white; color: var(--ink); outline: 0; }
+    .field select:focus, .field input:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(226,90,67,.12); }
+    .booking-submit { width: 100%; margin-top: .8rem; }
+    .availability-preview { display: grid; grid-template-columns: auto 1fr auto; gap: .7rem; align-items: center; margin-top: 1rem; padding: .85rem; border-radius: 12px; background: var(--surface-soft); }
+    .availability-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: var(--mint); color: var(--mint-ink); }
+    .availability-preview strong { display: block; color: var(--navy); font-size: .84rem; }
+    .availability-preview span { color: var(--muted); font-size: .74rem; }
+    .availability-preview b { color: var(--mint-ink); font-size: .74rem; }
+    .privacy-note { margin: .7rem 0 0; color: var(--muted); font-size: .72rem; text-align: center; }
+
+    .intent-strip { border-block: 1px solid var(--line); background: var(--surface); }
+    .intent-grid { display: grid; grid-template-columns: 1fr 1fr; }
+    .intent { min-height: 168px; display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: center; padding: 2rem clamp(1rem, 3vw, 2.5rem); }
+    .intent + .intent { border-left: 1px solid var(--line); }
+    .intent-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; background: var(--navy-soft); color: var(--navy); }
+    .intent:last-child .intent-icon { background: var(--coral-soft); color: var(--coral-dark); }
+    .intent h2 { margin: 0 0 .25rem; color: var(--navy); font-size: 1.1rem; }
+    .intent p { margin: 0; color: var(--muted); font-size: .84rem; }
+    .round-link { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: white; color: var(--navy); transition: transform 160ms var(--ease), border-color 160ms ease; }
+
+    .process { padding-block: clamp(4.5rem, 8vw, 7rem); }
+    .section-head { max-width: 690px; margin-bottom: 2.5rem; }
+    .section-head h2 { margin: .7rem 0 .85rem; color: var(--navy-strong); font-size: clamp(2rem, 4vw, 3.3rem); line-height: 1.08; letter-spacing: -.04em; }
+    .section-head p { color: var(--muted); }
+    .process-flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
+    .process-step { min-height: 220px; position: relative; padding: 1.7rem; }
+    .process-step + .process-step { border-left: 1px solid var(--line); }
+    .step-number { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2.8rem; color: #a1afba; font-size: .78rem; font-weight: 850; }
+    .step-number i { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: var(--navy-soft); color: var(--navy); font-style: normal; }
+    .process-step h3 { margin-bottom: .5rem; color: var(--navy); font-size: 1.05rem; }
+    .process-step p { margin: 0; color: var(--muted); font-size: .84rem; }
+
+    .compare { padding-block: clamp(4.5rem, 8vw, 7rem); background: var(--navy-strong); color: white; }
+    .compare .eyebrow { color: #ff9b88; }
+    .compare .section-head h2 { color: white; }
+    .compare .section-head p { color: #aabac7; }
+    .compare-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+    .compare-status { margin: 0; color: #b8c6d1; font-size: .82rem; }
+    .compare-list { border: 1px solid #315069; border-radius: var(--radius-lg); overflow: hidden; background: #0d263b; }
+    .lawyer-row { display: grid; grid-template-columns: minmax(14rem, 1.2fr) repeat(3, minmax(8rem, .7fr)) auto; gap: 1rem; align-items: center; min-height: 126px; padding: 1.15rem; border-bottom: 1px solid #29465d; transition: background 160ms ease; }
+    .lawyer-row:last-child { border-bottom: 0; }
+    .lawyer-row[data-selected="true"] { background: #14344e; box-shadow: inset 4px 0 0 var(--coral); }
+    .lawyer-person { display: grid; grid-template-columns: 48px 1fr; gap: .85rem; align-items: center; }
+    .avatar { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 13px; background: #f3e8dc; color: var(--navy); font-weight: 850; }
+    .lawyer-person h3 { margin: 0 0 .2rem; font-size: .98rem; }
+    .lawyer-person p { margin: 0; color: #9fb1c0; font-size: .75rem; }
+    .datum span { display: block; color: #8fa5b5; font-size: .68rem; }
+    .datum strong { display: block; margin-top: .2rem; color: white; font-size: .86rem; }
+    .rating { color: #ffae42 !important; }
+    .row-action { min-width: 120px; }
+    .select-lawyer { border-color: #49677d; background: transparent; }
+    .select-lawyer[aria-pressed="true"] { border-color: var(--coral); background: var(--coral); }
+    .demo-caption { margin: .8rem 0 0; color: #8399a9; font-size: .72rem; }
+
+    .advocate-pitch { padding-block: clamp(4.5rem, 8vw, 8rem); }
+    .pitch-shell { display: grid; grid-template-columns: minmax(0, .82fr) minmax(28rem, 1.18fr); gap: clamp(3rem, 8vw, 8rem); align-items: center; }
+    .pitch-copy h2 { margin: .8rem 0 1rem; color: var(--navy); font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1.06; letter-spacing: -.045em; }
+    .pitch-copy p { max-width: 560px; color: var(--muted); }
+    .pitch-points { display: grid; gap: .75rem; margin: 1.5rem 0 1.8rem; }
+    .pitch-points span { display: flex; align-items: center; gap: .65rem; color: #425463; font-size: .86rem; }
+    .pitch-points i { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; background: var(--mint); color: var(--mint-ink); font-style: normal; font-weight: 850; }
+    .dashboard { padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-small); }
+    .dashboard-top { display: flex; justify-content: space-between; gap: 1rem; padding: .4rem .4rem 1rem; }
+    .window-dots { display: flex; gap: .35rem; }
+    .window-dots i { width: 8px; height: 8px; border-radius: 50%; background: #cbd4db; }
+    .dashboard-top span { color: var(--muted); font-size: .72rem; font-weight: 700; }
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: .75rem; }
+    .mini-card { padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfd; }
+    .mini-card span { color: var(--muted); font-size: .7rem; }
+    .mini-card strong { display: block; margin-top: .4rem; color: var(--navy); font-size: 1.5rem; }
+    .mini-card small { color: var(--mint-ink); font-weight: 750; }
+    .inquiry-list { grid-row: span 2; }
+    .inquiry { display: grid; grid-template-columns: 32px 1fr auto; gap: .6rem; align-items: center; padding: .7rem 0; border-bottom: 1px solid var(--line); }
+    .inquiry:last-child { border-bottom: 0; }
+    .inquiry i { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; background: var(--navy-soft); color: var(--navy); font-style: normal; font-size: .7rem; font-weight: 850; }
+    .inquiry b { display: block; color: var(--navy); font-size: .78rem; }
+    .inquiry span { font-size: .67rem; }
+    .inquiry em { padding: .25rem .42rem; border-radius: 999px; background: var(--coral-soft); color: var(--coral-dark); font-size: .62rem; font-style: normal; font-weight: 800; }
+
+    .final-cta { padding-block: 0 clamp(4rem, 8vw, 7rem); }
+    .cta-shell { display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: center; padding: clamp(2rem, 5vw, 4rem); border-radius: var(--radius-lg); background: var(--coral); color: white; overflow: hidden; position: relative; }
+    .cta-shell::after { content: ""; position: absolute; right: 7%; bottom: -90px; width: 220px; height: 220px; border: 46px solid rgba(255,255,255,.09); border-radius: 50%; }
+    .cta-shell h2 { max-width: 760px; margin: 0 0 .6rem; font-size: clamp(1.8rem, 4vw, 3.2rem); line-height: 1.05; letter-spacing: -.04em; }
+    .cta-shell p { margin: 0; color: #ffe5df; }
+    .cta-shell .button { position: relative; z-index: 1; border-color: white; background: white; color: var(--navy); }
+    footer { border-top: 1px solid var(--line); background: var(--surface); }
+    .footer { min-height: 104px; display: flex; align-items: center; justify-content: space-between; gap: 2rem; color: var(--muted); font-size: .76rem; }
+    .footer .brand { color: var(--navy); }
+
+    .toast { position: fixed; z-index: 50; left: 50%; bottom: 1.2rem; transform: translate(-50%, 140%); max-width: calc(100% - 2rem); display: flex; align-items: center; gap: .65rem; padding: .8rem 1rem; border-radius: 12px; background: var(--navy-strong); color: white; box-shadow: var(--shadow); font-size: .82rem; opacity: 0; transition: transform 260ms var(--ease), opacity 260ms ease; }
+    .toast[data-visible="true"] { transform: translate(-50%, 0); opacity: 1; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (hover: hover) and (pointer: fine) {
+      .button:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(16,42,67,.14); }
+      .button:hover .button-icon { transform: translateX(3px); }
+      .nav-links a:hover { background: var(--surface-soft); color: var(--navy); }
+      .service-chip:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+      .round-link:hover { transform: translateX(3px); border-color: var(--coral); }
+      .lawyer-row:hover { background: #112e45; }
+    }
+
+    @media (max-width: 980px) {
+      .nav-links { position: absolute; inset: 102px 0 auto; display: none; padding: .8rem var(--page) 1rem; border-bottom: 1px solid var(--line); background: white; }
+      .nav-links[data-open="true"] { display: grid; }
+      .nav-links a { width: 100%; }
+      .menu-button { display: grid; }
+      .nav-actions > .button.text { display: none; }
+      .hero-grid { grid-template-columns: 1fr; gap: 3rem; min-height: 0; }
+      .hero-copy { max-width: 760px; }
+      .panel-orbit { display: none; }
+      .intent { grid-template-columns: auto 1fr; }
+      .intent .round-link { grid-column: 2; }
+      .lawyer-row { grid-template-columns: minmax(13rem, 1.2fr) repeat(2, minmax(7rem, .7fr)) auto; }
+      .lawyer-row .datum:nth-of-type(3) { display: none; }
+      .pitch-shell { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 700px) {
+      .prototype-bar { font-size: .68rem; }
+      .nav { min-height: 64px; }
+      .nav-actions > .button.coral { display: none; }
+      .nav-links { inset: 94px 0 auto; }
+      .hero-grid { padding-block: 3.5rem; }
+      .hero-copy h1 { font-size: clamp(2.45rem, 12vw, 3.6rem); }
+      .audience-switch { width: 100%; }
+      .audience-switch button { flex: 1; }
+      .hero-actions { flex-direction: column; }
+      .hero-actions .button { width: 100%; }
+      .booking-card { padding: 1rem; border-radius: 18px; }
+      .service-grid { grid-template-columns: 1fr 1fr; }
+      .field-row { grid-template-columns: 1fr; }
+      .intent-grid { grid-template-columns: 1fr; }
+      .intent + .intent { border-left: 0; border-top: 1px solid var(--line); }
+      .process-flow { grid-template-columns: 1fr; }
+      .process-step { min-height: 180px; }
+      .process-step + .process-step { border-left: 0; border-top: 1px solid var(--line); }
+      .step-number { margin-bottom: 1.8rem; }
+      .compare-bar { align-items: flex-start; flex-direction: column; }
+      .lawyer-row { grid-template-columns: 1fr 1fr; gap: .9rem; padding: 1rem; }
+      .lawyer-person { grid-column: 1 / -1; }
+      .lawyer-row .datum:nth-of-type(3) { display: block; }
+      .row-action { grid-column: 1 / -1; }
+      .row-action .button { width: 100%; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .inquiry-list { grid-row: auto; }
+      .cta-shell { grid-template-columns: 1fr; }
+      .cta-shell .button { width: 100%; }
+      .footer { min-height: 150px; align-items: flex-start; flex-direction: column; justify-content: center; gap: .8rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="prototype-bar" role="note">Standalone design prototype · Representative data · Search and booking are not connected to a live service</div>
+  <header>
+    <div class="wrap nav">
+      <a class="brand" href="#top" aria-label="CaseJeeto home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3v18M5 6h14M7 6l-4 7h8L7 6Zm10 0-4 7h8l-4-7ZM8 19h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        CaseJeeto
+      </a>
+      <nav id="primary-nav" class="nav-links" aria-label="Primary navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#compare">Find advocates</a>
+        <a href="#for-advocates">For advocates</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button text" href="#top">Sign in</a>
+        <a class="button coral" href="#finder">Find legal help</a>
+        <button class="menu-button" type="button" aria-expanded="false" aria-controls="primary-nav" aria-label="Open navigation">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.5 5h15M2.5 10h15M2.5 15h15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="top" class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <div class="audience-switch" role="group" aria-label="Choose your CaseJeeto journey">
+            <button type="button" data-audience="client" aria-pressed="true">I need a lawyer</button>
+            <button type="button" data-audience="advocate" aria-pressed="false">I am an advocate</button>
+          </div>
+          <span class="eyebrow" id="hero-eyebrow">Legal help, made easier</span>
+          <h1 id="hero-title">Meet the right advocate. Book with confidence.</h1>
+          <p id="hero-description">Tell us what you need, compare relevant experience and fees, then choose a consultation time that works for you.</p>
+          <div class="hero-actions">
+            <a class="button coral" id="hero-primary" href="#finder">Find an advocate <span class="button-icon" aria-hidden="true">→</span></a>
+            <a class="button ghost" id="hero-secondary" href="#how-it-works">See how it works</a>
+          </div>
+          <div class="trust-line" aria-label="Platform transparency signals">
+            <span><svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4 10 4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Profile information at a glance</span>
+            <span><svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4 10 4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Consultation fees shown upfront</span>
+          </div>
+        </div>
+
+        <div class="booking-panel" id="finder">
+          <span class="panel-orbit" aria-hidden="true"></span>
+          <form class="booking-card" id="booking-form">
+            <div class="booking-head">
+              <div><h2>Find your first consultation</h2><p>Start with your legal need. You can refine the details next.</p></div>
+              <span class="step-count" aria-label="Step 1 of 3">1 / 3</span>
+            </div>
+            <p class="service-label">What do you need help with?</p>
+            <div class="service-grid" role="group" aria-label="Choose a legal service">
+              <button class="service-chip" type="button" data-service="Family law" aria-pressed="true"><strong>Family</strong><small>Divorce, custody</small></button>
+              <button class="service-chip" type="button" data-service="Criminal law" aria-pressed="false"><strong>Criminal</strong><small>Bail, complaints</small></button>
+              <button class="service-chip" type="button" data-service="Property law" aria-pressed="false"><strong>Property</strong><small>Title, disputes</small></button>
+              <button class="service-chip" type="button" data-service="Corporate law" aria-pressed="false"><strong>Business</strong><small>Contracts, advisory</small></button>
+              <button class="service-chip" type="button" data-service="Employment law" aria-pressed="false"><strong>Employment</strong><small>Workplace matters</small></button>
+              <button class="service-chip" type="button" data-service="Other legal need" aria-pressed="false"><strong>Other</strong><small>Help me choose</small></button>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>Your city</span><select id="city-select"><option>New Delhi</option><option>Mumbai</option><option>Bengaluru</option><option>Gurugram</option><option>Noida</option></select></label>
+              <label class="field"><span>Preferred language</span><select id="language-select"><option>Hindi or English</option><option>English</option><option>Hindi</option><option>Punjabi</option><option>Marathi</option></select></label>
+            </div>
+            <button class="button coral booking-submit" type="submit">Show matching advocates <span class="button-icon" aria-hidden="true">→</span></button>
+            <div class="availability-preview" aria-live="polite">
+              <span class="availability-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 20 20" fill="none"><rect x="2.5" y="4" width="15" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v4M14 2v4M3 8h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+              <span><strong id="preview-service">Family law in New Delhi</strong><span id="preview-language">Hindi or English · Representative availability</span></span>
+              <b>Demo</b>
+            </div>
+            <p class="privacy-note">No payment is required to view representative profiles in this prototype.</p>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="intent-strip" aria-label="Choose your goal">
+      <div class="wrap intent-grid">
+        <a class="intent" href="#compare"><span class="intent-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="10" cy="8" r="4" stroke="currentColor" stroke-width="1.7"/><path d="M3 21c.7-4.3 3-6.5 7-6.5s6.3 2.2 7 6.5M18 8h3M19.5 6.5v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span><div><h2>I need legal help</h2><p>Compare specialisation, court practice, languages, fees and available times.</p></div><span class="round-link" aria-hidden="true">→</span></a>
+        <a class="intent" href="#for-advocates"><span class="intent-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 21h14M7 21V8h10v13M9 8V5h6v3M10 12h4M10 16h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><h2>I want better-fit client inquiries</h2><p>Present your practice clearly and let potential clients understand fit before reaching out.</p></div><span class="round-link" aria-hidden="true">→</span></a>
+      </div>
+    </section>
+
+    <section id="how-it-works" class="process">
+      <div class="wrap">
+        <div class="section-head"><span class="eyebrow">A clear path forward</span><h2>From a legal question to a booked conversation.</h2><p>Each step is designed to reduce uncertainty without pretending that legal outcomes can be guaranteed.</p></div>
+        <div class="process-flow">
+          <article class="process-step"><div class="step-number"><span>STEP 01</span><i aria-hidden="true">⌕</i></div><h3>Describe your legal need</h3><p>Choose a practice area, location and language. Share only what is needed to begin.</p></article>
+          <article class="process-step"><div class="step-number"><span>STEP 02</span><i aria-hidden="true">≋</i></div><h3>Compare relevant advocates</h3><p>Review representative experience, consultation fees, court practice and availability together.</p></article>
+          <article class="process-step"><div class="step-number"><span>STEP 03</span><i aria-hidden="true">✓</i></div><h3>Choose a consultation</h3><p>Select a suitable time and arrive prepared for a focused first conversation.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="compare" class="compare">
+      <div class="wrap">
+        <div class="section-head"><span class="eyebrow">Concise comparison</span><h2>Shortlist by what matters to your case.</h2><p>Representative profiles below show how a useful comparison could work. They are demo data, not live listings.</p></div>
+        <div class="compare-bar"><p id="compare-status" class="compare-status" role="status" aria-live="polite">Select one representative advocate to preview your choice.</p><a class="button ghost" href="#finder">Change legal need</a></div>
+        <div class="compare-list">
+          <article class="lawyer-row" data-name="Adv. Meera Sethi" data-selected="false">
+            <div class="lawyer-person"><span class="avatar" aria-hidden="true">MS</span><span><h3>Adv. Meera Sethi</h3><p>Family &amp; matrimonial · New Delhi</p></span></div>
+            <div class="datum"><span>Experience</span><strong>14 years</strong></div>
+            <div class="datum"><span>Consultation</span><strong>₹1,800</strong></div>
+            <div class="datum"><span>Demo rating</span><strong class="rating">★ 4.9</strong></div>
+            <div class="row-action"><button class="button select-lawyer" type="button" aria-pressed="false">Select</button></div>
+          </article>
+          <article class="lawyer-row" data-name="Adv. Arjun Malhotra" data-selected="false">
+            <div class="lawyer-person"><span class="avatar" aria-hidden="true">AM</span><span><h3>Adv. Arjun Malhotra</h3><p>Criminal litigation · New Delhi</p></span></div>
+            <div class="datum"><span>Experience</span><strong>11 years</strong></div>
+            <div class="datum"><span>Consultation</span><strong>₹2,500</strong></div>
+            <div class="datum"><span>Demo rating</span><strong class="rating">★ 4.8</strong></div>
+            <div class="row-action"><button class="button select-lawyer" type="button" aria-pressed="false">Select</button></div>
+          </article>
+          <article class="lawyer-row" data-name="Adv. Nandita Rao" data-selected="false">
+            <div class="lawyer-person"><span class="avatar" aria-hidden="true">NR</span><span><h3>Adv. Nandita Rao</h3><p>Corporate &amp; employment · New Delhi</p></span></div>
+            <div class="datum"><span>Experience</span><strong>9 years</strong></div>
+            <div class="datum"><span>Consultation</span><strong>₹2,200</strong></div>
+            <div class="datum"><span>Demo rating</span><strong class="rating">★ 4.9</strong></div>
+            <div class="row-action"><button class="button select-lawyer" type="button" aria-pressed="false">Select</button></div>
+          </article>
+        </div>
+        <p class="demo-caption">Prototype note: names, ratings, fees and availability shown here are illustrative. Live data would come from the CaseJeeto service.</p>
+      </div>
+    </section>
+
+    <section id="for-advocates" class="advocate-pitch">
+      <div class="wrap pitch-shell">
+        <div class="pitch-copy"><span class="eyebrow">Built for advocates too</span><h2>Turn a clear practice profile into better-fit inquiries.</h2><p>Make it easier for prospective clients to understand what you handle, where you practise and how to start a consultation.</p><div class="pitch-points"><span><i aria-hidden="true">✓</i>Present practice areas and court experience clearly</span><span><i aria-hidden="true">✓</i>Set consultation fees and availability</span><span><i aria-hidden="true">✓</i>Keep incoming consultation requests organised</span></div><a class="button" href="#advocate-preview">Preview the advocate experience <span class="button-icon" aria-hidden="true">→</span></a></div>
+        <div class="dashboard" id="advocate-preview" aria-label="Representative advocate dashboard preview">
+          <div class="dashboard-top"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span>Representative dashboard</span></div>
+          <div class="dashboard-grid">
+            <div class="mini-card"><span>Profile completeness</span><strong>82%</strong><small>2 details to review</small></div>
+            <div class="mini-card inquiry-list"><span>New consultation inquiries</span><div class="inquiry"><i>AK</i><span><b>Property documentation</b>New Delhi · Hindi</span><em>New</em></div><div class="inquiry"><i>RS</i><span><b>Employment contract</b>Gurugram · English</span><em>New</em></div><div class="inquiry"><i>PN</i><span><b>Consumer complaint</b>Noida · Hindi</span><em>Review</em></div></div>
+            <div class="mini-card"><span>Next open slot</span><strong>4:30</strong><small>Tuesday · Demo</small></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="wrap"><div class="cta-shell"><div><h2>A better first legal conversation starts with a clearer choice.</h2><p>Explore representative profiles and validate the CaseJeeto experience.</p></div><a class="button" href="#finder">Start with your legal need <span class="button-icon" aria-hidden="true">→</span></a></div></div>
+    </section>
+  </main>
+
+  <footer><div class="wrap footer"><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3v18M5 6h14M7 6l-4 7h8L7 6Zm10 0-4 7h8l-4-7ZM8 19h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>CaseJeeto</a><span>A technology marketplace, not a provider of legal advice. Outcomes are never guaranteed.</span><span>© 2026 CaseJeeto</span></div></footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"><span aria-hidden="true">✓</span><span id="toast-copy">Your prototype choice has been updated.</span></div>
+
+  <script>
+    const menuButton = document.querySelector('.menu-button');
+    const nav = document.querySelector('.nav-links');
+    const serviceButtons = [...document.querySelectorAll('.service-chip')];
+    const audienceButtons = [...document.querySelectorAll('[data-audience]')];
+    const citySelect = document.querySelector('#city-select');
+    const languageSelect = document.querySelector('#language-select');
+    const previewService = document.querySelector('#preview-service');
+    const previewLanguage = document.querySelector('#preview-language');
+    const bookingForm = document.querySelector('#booking-form');
+    const toast = document.querySelector('#toast');
+    const toastCopy = document.querySelector('#toast-copy');
+    const compareStatus = document.querySelector('#compare-status');
+    const lawyerRows = [...document.querySelectorAll('.lawyer-row')];
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let selectedService = 'Family law';
+    let toastTimer;
+
+    function setMenu(open) {
+      nav.dataset.open = String(open);
+      menuButton.setAttribute('aria-expanded', String(open));
+      menuButton.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+    }
+
+    function showToast(message) {
+      toastCopy.textContent = message;
+      toast.dataset.visible = 'true';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.dataset.visible = 'false'; }, 2800);
+    }
+
+    function updatePreview() {
+      previewService.textContent = `${selectedService} in ${citySelect.value}`;
+      previewLanguage.textContent = `${languageSelect.value} · Representative availability`;
+    }
+
+    menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
+    nav.addEventListener('click', event => { if (event.target.closest('a')) setMenu(false); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && menuButton.getAttribute('aria-expanded') === 'true') { setMenu(false); menuButton.focus(); } });
+
+    serviceButtons.forEach(button => button.addEventListener('click', () => {
+      serviceButtons.forEach(item => item.setAttribute('aria-pressed', 'false'));
+      button.setAttribute('aria-pressed', 'true');
+      selectedService = button.dataset.service;
+      updatePreview();
+    }));
+    citySelect.addEventListener('change', updatePreview);
+    languageSelect.addEventListener('change', updatePreview);
+
+    audienceButtons.forEach(button => button.addEventListener('click', () => {
+      const advocate = button.dataset.audience === 'advocate';
+      audienceButtons.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+      document.querySelector('#hero-eyebrow').textContent = advocate ? 'A clearer route to client discovery' : 'Legal help, made easier';
+      document.querySelector('#hero-title').textContent = advocate ? 'Show your practice clearly. Meet better-fit clients.' : 'Meet the right advocate. Book with confidence.';
+      document.querySelector('#hero-description').textContent = advocate ? 'Create a credible practice profile, set your consultation preferences and help potential clients understand fit before they reach out.' : 'Tell us what you need, compare relevant experience and fees, then choose a consultation time that works for you.';
+      const primary = document.querySelector('#hero-primary');
+      primary.textContent = advocate ? 'Explore the advocate experience →' : 'Find an advocate →';
+      primary.href = advocate ? '#for-advocates' : '#finder';
+      document.querySelector('#hero-secondary').href = advocate ? '#compare' : '#how-it-works';
+    }));
+
+    bookingForm.addEventListener('submit', event => {
+      event.preventDefault();
+      showToast(`Demo matches prepared for ${selectedService} in ${citySelect.value}.`);
+      document.querySelector('#compare').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+
+    lawyerRows.forEach(row => row.querySelector('.select-lawyer').addEventListener('click', event => {
+      lawyerRows.forEach(item => { item.dataset.selected = 'false'; const control = item.querySelector('.select-lawyer'); control.setAttribute('aria-pressed', 'false'); control.textContent = 'Select'; });
+      row.dataset.selected = 'true';
+      event.currentTarget.setAttribute('aria-pressed', 'true');
+      event.currentTarget.textContent = 'Selected';
+      compareStatus.textContent = `${row.dataset.name} added to your representative shortlist.`;
+      showToast(`${row.dataset.name} selected for this prototype.`);
+    }));
+  </script>
+</body>
+</html>

@@ -324,7 +324,7 @@ const paymentSchema = new Schema(
 
     paymentStatus: {
         type: String,
-        enum: ["created", "paid", "failed", "cancelled", "refunded"],
+        enum: ["creating", "created", "paid", "failed", "cancelled", "refunded"],
         default: "created",
     },
 
@@ -338,6 +338,7 @@ const paymentSchema = new Schema(
     refundReason: { type: String, default: null },
     refundedAt: { type: Date, default: null },
     razorpayRefundId: { type: String, default: null },
+    processedRefundIds: { type: [String], default: [] },
 
     failureReason: { type: String, default: null },
 
@@ -362,6 +363,17 @@ const paymentSchema = new Schema(
 
 paymentSchema.index({ clientId: 1, createdAt: -1 });
 paymentSchema.index({ lawyerId: 1, createdAt: -1 });
-paymentSchema.index({ bookingId: 1 });
+// A booking has one payment lifecycle. Failed/cancelled attempts are reused
+// for a new Razorpay order, preventing concurrent requests from creating
+// multiple collectible orders for the same consultation.
+paymentSchema.index({ bookingId: 1 }, { unique: true });
+paymentSchema.index(
+  { razorpayOrderId: 1 },
+  { unique: true, partialFilterExpression: { razorpayOrderId: { $type: 'string' } } }
+);
+paymentSchema.index(
+  { razorpayPaymentId: 1 },
+  { unique: true, partialFilterExpression: { razorpayPaymentId: { $type: 'string' } } }
+);
 
 module.exports = mongoose.model("Payment", paymentSchema);

@@ -58,6 +58,12 @@ exports.getLawyers = asyncHandler(async (req, res) => {
   } = req.query;
 
   const match = { isProfileVisible: true, verificationStatus: 'approved' };
+  if (req.user?.role === 'client') {
+    const client = await Client.findOne({ userId: req.user.userId }).select('blockedLawyers');
+    if (client?.blockedLawyers?.length) {
+      match._id = { $nin: client.blockedLawyers };
+    }
+  }
   if (specialization) match.specialization = { $in: specialization.split(',') };
   if (court) match.courtsPracticed = { $in: court.split(',') };
   if (language) match.languages = { $in: language.split(',') };
@@ -108,6 +114,7 @@ exports.getLawyerById = asyncHandler(async (req, res) => {
   const lawyer = await Lawyer.findOne({
     _id: req.params.id,
     isProfileVisible: true,
+    verificationStatus: 'approved',
   })
     .populate('userId', 'name')
     .lean();

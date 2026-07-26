@@ -54,6 +54,8 @@ const conversationSchema = new Schema(
   }
 );
 
+conversationSchema.index({ clientId: 1, lawyerId: 1 }, { unique: true });
+
 module.exports = mongoose.model(
   "Conversation",
   conversationSchema

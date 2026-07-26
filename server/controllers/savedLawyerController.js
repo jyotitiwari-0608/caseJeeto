@@ -14,12 +14,14 @@ exports.saveLawyer = asyncHandler(async (req, res) => {
   }
 
   const client = await Client.findOneAndUpdate(
-    { userId: req.user.userId },
+    { userId: req.user.userId, blockedLawyers: { $ne: lawyerId } },
     { $addToSet: { savedLawyers: lawyerId } },
     { new: true }
   );
   if (!client) {
-    throw new AppError('Client profile not found.', 404);
+    const existingClient = await Client.exists({ userId: req.user.userId });
+    if (!existingClient) throw new AppError('Client profile not found.', 404);
+    throw new AppError('Unblock this lawyer before saving the profile.', 409);
   }
   return sendSuccess(res, 200, { savedLawyers: client.savedLawyers });
 });

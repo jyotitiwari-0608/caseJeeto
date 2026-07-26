@@ -1,6 +1,7 @@
 // // authController.js
 
 const bcrypt = require('bcryptjs');
+const { randomUUID } = require('crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 const Client = require('../models/client');
@@ -8,6 +9,7 @@ const Lawyer = require('../models/lawyer');
 
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL = '30d';
+const MAX_REFRESH_SESSIONS = 10;
 
 function signAccessToken(user) {
   return jwt.sign(
@@ -21,8 +23,25 @@ function signRefreshToken(user) {
   return jwt.sign(
     { userId: user._id },
     process.env.JWT_REFRESH_SECRET,
-    { expiresIn: REFRESH_TOKEN_TTL }
+    { expiresIn: REFRESH_TOKEN_TTL, jwtid: randomUUID() }
   );
+}
+
+async function addRefreshSession(user, refreshToken, device) {
+  const tokenHash = await bcrypt.hash(refreshToken, 12);
+  const result = await User.updateOne(
+    { _id: user._id, isActive: true },
+    {
+      $set: { lastLogin: new Date() },
+      $push: {
+        refreshTokens: {
+          $each: [{ tokenHash, device: device || 'unknown', createdAt: new Date() }],
+          $slice: -MAX_REFRESH_SESSIONS,
+        },
+      },
+    }
+  );
+  if (result.modifiedCount !== 1) throw new Error('Could not persist refresh session.');
 }
 
 // POST /api/auth/register
@@ -64,12 +83,7 @@ exports.register = async (req, res) => {
     // CHANGED: schema is `refreshTokens: [ { tokenHash, device, createdAt } ]`,
     // not a single `refreshToken` string. Push a new session entry instead
     // of overwriting a field that doesn't exist on the model.
-    const tokenHash = await bcrypt.hash(refreshToken, 12);
-    user.refreshTokens.push({
-      tokenHash,
-      device: req.headers['user-agent'] || 'unknown',
-    });
-    await user.save();
+    await addRefreshSession(user, refreshToken, req.headers['user-agent']);
 
     return res.status(201).json({
       user: { id: user._id, name: user.name, email: user.email, role: user.role },
@@ -90,7 +104,7 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
-    const user = await User.findOne({ email }).select("+passwordHash");
+    const user = await User.findOne({ email }).select('+passwordHash');
 
     if (!user || !user.isActive) {
       return res.status(401).json({ message: "Invalid credentials." });
@@ -101,18 +115,10 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    user.lastLogin = new Date();
-
     const accessToken = signAccessToken(user);
     const refreshToken = signRefreshToken(user);
 
-    const tokenHash = await bcrypt.hash(refreshToken, 12);
-    user.refreshTokens.push({
-      tokenHash,
-      device: req.headers['user-agent'] || 'unknown',
-    });
-
-    await user.save();
+    await addRefreshSession(user, refreshToken, req.headers['user-agent']);
 
     return res.status(200).json({
       user: { id: user._id, name: user.name, email: user.email, role: user.role },
@@ -166,8 +172,21 @@ exports.refreshToken = async (req, res) => {
     // captured/replayed old token stops working after this call.
     const newAccessToken = signAccessToken(user);
     const newRefreshToken = signRefreshToken(user);
-    user.refreshTokens[matchedIndex].tokenHash = await bcrypt.hash(newRefreshToken, 12);
-    await user.save();
+    const matchedSession = user.refreshTokens[matchedIndex];
+    const newTokenHash = await bcrypt.hash(newRefreshToken, 12);
+    const rotation = await User.updateOne(
+      {
+        _id: user._id,
+        isActive: true,
+        refreshTokens: {
+          $elemMatch: { _id: matchedSession._id, tokenHash: matchedSession.tokenHash },
+        },
+      },
+      { $set: { 'refreshTokens.$.tokenHash': newTokenHash } }
+    );
+    if (rotation.modifiedCount !== 1) {
+      return res.status(401).json({ message: 'Refresh token was already used or revoked.' });
+    }
 
     return res.status(200).json({
       accessToken: newAccessToken,
@@ -209,8 +228,10 @@ exports.logout = async (req, res) => {
         }
       }
       if (matchedIndex !== -1) {
-        user.refreshTokens.splice(matchedIndex, 1);
-        await user.save();
+        await User.updateOne(
+          { _id: user._id },
+          { $pull: { refreshTokens: { _id: user.refreshTokens[matchedIndex]._id } } }
+        );
       }
     }
 

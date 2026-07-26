@@ -304,5 +304,8 @@ const refundSchema = new Schema(
 
 refundSchema.index({ clientId: 1, createdAt: -1 });
 refundSchema.index({ lawyerId: 1, createdAt: -1 });
+// One reusable refund lifecycle per payment. A rejected request can be
+// reset and resubmitted, while concurrent active requests cannot duplicate.
+refundSchema.index({ paymentId: 1 }, { unique: true });
 
 module.exports = mongoose.model("Refund", refundSchema);

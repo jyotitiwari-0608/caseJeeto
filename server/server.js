@@ -16,6 +16,16 @@ const socketAuthMiddleware = require('./middleware/socketAuth.middleware');
 
 const app = express();
 
+// Configure the exact proxy hop count in deployed environments so IP-based
+// rate limits use the real client address without trusting arbitrary
+// X-Forwarded-For values. Never use blanket `true` here.
+if (process.env.TRUST_PROXY) {
+  if (!/^\d+$/.test(process.env.TRUST_PROXY)) {
+    throw new Error('TRUST_PROXY must be a non-negative proxy hop count.');
+  }
+  app.set('trust proxy', Number(process.env.TRUST_PROXY));
+}
+
 // --- Security & logging ---
 app.use(helmet());
 app.use(cors(corsOptions));
@@ -61,6 +71,7 @@ app.use('/api/lawyers/me/dashboard', require('./routes/dasboard.routes'));
 // --- Admin-facing ---
 app.use('/api/admin/verification', require('./routes/admin/adminVerificationRoutes'));
 app.use('/api/admin/refunds', require('./routes/admin/adminRefund'));
+app.use('/api/admin/payments', require('./routes/admin/adminPayment.routes'));
 
 // --- Shared ---
 app.use('/api/uploads', require('./routes/uploadRoutes'));
@@ -86,7 +97,7 @@ require('./sockets')(io);
 const PORT = process.env.PORT || 5000;
 
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(process.env.MONGO_URI, { autoIndex: process.env.NODE_ENV !== 'production' })
   .then(() => {
     server.listen(PORT, () => console.log(`CaseLeeto server running on port ${PORT}`));
   })

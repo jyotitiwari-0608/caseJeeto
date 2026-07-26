@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken, requireRole } = require('../middleware/auth.middleware');
 const paymentController = require('../controllers/paymentController');
+const { paymentOrderLimiter } = require('../middleware/rateLimiter.middleware');
 
 router.use(verifyToken, requireRole('client'));
 
-router.post('/orders', paymentController.createOrder);
+router.post('/orders', paymentOrderLimiter, paymentController.createOrder);
 router.post('/verify', paymentController.verifyPayment);
 router.get('/booking/:bookingId', paymentController.getPaymentByBookingId);
 router.get('/me', paymentController.getMyPaymentHistory);
