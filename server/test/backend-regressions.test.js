@@ -106,6 +106,10 @@ test('login inserts and caps refresh sessions with one atomic update', async () 
     assert.equal(user.refreshTokens.length, 2);
     assert.equal(user.refreshTokens[0], existing);
     assert.ok(body.refreshToken);
+    assert.equal(
+      atomicUpdate.$push.refreshTokens.$each[0].tokenHash,
+      crypto.createHash('sha256').update(body.refreshToken).digest('hex')
+    );
   } finally {
     User.findOne = originalFindOne;
     User.updateOne = originalUpdateOne;
@@ -115,29 +119,28 @@ test('login inserts and caps refresh sessions with one atomic update', async () 
 });
 
 test('refresh rotation uses session CAS and rejects concurrent replay', async () => {
-  const bcrypt = require('bcryptjs');
   const User = require('../models/user');
   const authController = require('../controllers/authController');
-  const originals = { findById: User.findById, updateOne: User.updateOne, compare: bcrypt.compare, hash: bcrypt.hash };
+  const originals = { findById: User.findById, updateOne: User.updateOne };
   const userId = new mongoose.Types.ObjectId();
   const sessionId = new mongoose.Types.ObjectId();
   const oldToken = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d', jwtid: 'old-jti' });
+  const oldTokenHash = crypto.createHash('sha256').update(oldToken).digest('hex');
   const user = {
     _id: userId,
     role: 'client',
     isActive: true,
-    refreshTokens: [{ _id: sessionId, tokenHash: 'old-hash' }],
+    refreshTokens: [{ _id: sessionId, tokenHash: oldTokenHash }],
   };
   User.findById = () => ({ select: async () => user });
-  bcrypt.compare = async () => true;
-  bcrypt.hash = async (value) => `hash:${value}`;
   let consumed = false;
   let storedHash;
-  User.updateOne = async (filter, update) => {
-    assert.equal(String(filter.refreshTokens.$elemMatch._id), String(sessionId));
+  User.updateOne = async (filter, update, options) => {
+    assert.equal(filter['refreshTokens.tokenHash'], oldTokenHash);
+    assert.equal(options.arrayFilters[0]['session.tokenHash'], oldTokenHash);
     if (consumed) return { modifiedCount: 0 };
     consumed = true;
-    storedHash = update.$set['refreshTokens.$.tokenHash'];
+    storedHash = update.$set['refreshTokens.$[session].tokenHash'];
     return { modifiedCount: 1 };
   };
   const invoke = async () => {
@@ -151,17 +154,135 @@ test('refresh rotation uses session CAS and rejects concurrent replay', async ()
   };
 
   try {
-    const first = await invoke();
-    const second = await invoke();
-    assert.equal(first.statusCode, 200);
-    assert.equal(storedHash, `hash:${first.body.refreshToken}`);
-    assert.equal(second.statusCode, 401);
-    assert.match(second.body.message, /already used or revoked/);
+    const results = await Promise.all([invoke(), invoke()]);
+    assert.deepEqual(results.map((result) => result.statusCode).sort(), [200, 401]);
+    const success = results.find((result) => result.statusCode === 200);
+    const replay = results.find((result) => result.statusCode === 401);
+    assert.equal(storedHash, crypto.createHash('sha256').update(success.body.refreshToken).digest('hex'));
+    assert.match(replay.body.message, /already used or revoked/);
   } finally {
     User.findById = originals.findById;
     User.updateOne = originals.updateOne;
+  }
+});
+
+test('refresh storage distinguishes JWTs that differ only after bcrypt byte 72', async () => {
+  const bcrypt = require('bcryptjs');
+  const User = require('../models/user');
+  const authController = require('../controllers/authController');
+  const originals = { findOne: User.findOne, updateOne: User.updateOne, compare: bcrypt.compare };
+  const userId = new mongoose.Types.ObjectId();
+  const user = {
+    _id: userId,
+    name: 'Test',
+    email: 'test@example.com',
+    role: 'client',
+    isActive: true,
+    passwordHash: 'password-hash',
+  };
+  const issued = [];
+
+  User.findOne = () => ({ select: async () => user });
+  User.updateOne = async (filter, update) => {
+    issued.push(update.$push.refreshTokens.$each[0]);
+    return { modifiedCount: 1 };
+  };
+  bcrypt.compare = async () => true;
+
+  const login = async () => {
+    let statusCode;
+    let body;
+    await authController.login(
+      { body: { email: user.email, password: 'secret' }, headers: {} },
+      { status(value) { statusCode = value; return this; }, json(value) { body = value; return value; } }
+    );
+    return { statusCode, body };
+  };
+
+  try {
+    const first = await login();
+    const second = await login();
+    assert.equal(first.statusCode, 200);
+    assert.equal(second.statusCode, 200);
+    assert.equal(first.body.refreshToken.slice(0, 72), second.body.refreshToken.slice(0, 72));
+    assert.notEqual(first.body.refreshToken, second.body.refreshToken);
+    assert.equal(issued[0].tokenHash, crypto.createHash('sha256').update(first.body.refreshToken).digest('hex'));
+    assert.equal(issued[1].tokenHash, crypto.createHash('sha256').update(second.body.refreshToken).digest('hex'));
+    assert.notEqual(issued[0].tokenHash, issued[1].tokenHash);
+  } finally {
+    User.findOne = originals.findOne;
+    User.updateOne = originals.updateOne;
     bcrypt.compare = originals.compare;
-    bcrypt.hash = originals.hash;
+  }
+});
+
+test('legacy bcrypt refresh sessions are rejected instead of ambiguously matched', async () => {
+  const bcrypt = require('bcryptjs');
+  const User = require('../models/user');
+  const authController = require('../controllers/authController');
+  const originals = { findById: User.findById, updateOne: User.updateOne };
+  const userId = new mongoose.Types.ObjectId();
+  const token = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d', jwtid: 'legacy-jti' });
+  const legacyHash = await bcrypt.hash(token, 4);
+  let updateCalled = false;
+
+  User.findById = () => ({
+    select: async () => ({
+      _id: userId,
+      role: 'client',
+      isActive: true,
+      refreshTokens: [{ _id: new mongoose.Types.ObjectId(), tokenHash: legacyHash }],
+    }),
+  });
+  User.updateOne = async () => { updateCalled = true; return { modifiedCount: 1 }; };
+
+  try {
+    let statusCode;
+    let body;
+    await authController.refreshToken(
+      { body: { refreshToken: token } },
+      { status(value) { statusCode = value; return this; }, json(value) { body = value; return value; } }
+    );
+    assert.equal(statusCode, 401);
+    assert.match(body.message, /revoked or invalid/);
+    assert.equal(updateCalled, false);
+  } finally {
+    User.findById = originals.findById;
+    User.updateOne = originals.updateOne;
+  }
+});
+
+test('logout removes only the exact refresh session digest', async () => {
+  const User = require('../models/user');
+  const authController = require('../controllers/authController');
+  const originalUpdateOne = User.updateOne;
+  const userId = new mongoose.Types.ObjectId();
+  const firstToken = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d', jwtid: 'first-session' });
+  const secondToken = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d', jwtid: 'second-session' });
+  const sessions = [firstToken, secondToken].map((token) => ({
+    tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+  }));
+
+  User.updateOne = async (filter, update) => {
+    assert.equal(String(filter._id), String(userId));
+    const digest = update.$pull.refreshTokens.tokenHash;
+    const index = sessions.findIndex((session) => session.tokenHash === digest);
+    if (index !== -1) sessions.splice(index, 1);
+    return { modifiedCount: index === -1 ? 0 : 1 };
+  };
+
+  try {
+    let statusCode;
+    await authController.logout(
+      { body: { refreshToken: firstToken } },
+      { status(value) { statusCode = value; return this; }, json(value) { return value; } }
+    );
+    assert.equal(statusCode, 200);
+    assert.deepEqual(sessions, [{
+      tokenHash: crypto.createHash('sha256').update(secondToken).digest('hex'),
+    }]);
+  } finally {
+    User.updateOne = originalUpdateOne;
   }
 });
 

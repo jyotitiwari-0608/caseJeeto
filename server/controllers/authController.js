@@ -1,7 +1,7 @@
 // // authController.js
 
 const bcrypt = require('bcryptjs');
-const { randomUUID } = require('crypto');
+const { createHash, randomUUID, timingSafeEqual } = require('crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 const Client = require('../models/client');
@@ -27,8 +27,25 @@ function signRefreshToken(user) {
   );
 }
 
+function digestRefreshToken(refreshToken) {
+  return createHash('sha256').update(refreshToken, 'utf8').digest('hex');
+}
+
+function refreshTokenMatchesDigest(refreshToken, storedDigest) {
+  if (typeof storedDigest !== 'string' || !/^[a-f0-9]{64}$/i.test(storedDigest)) {
+    // Legacy bcrypt values are deliberately invalidated. Bcrypt truncates
+    // inputs after 72 bytes, which makes distinct JWTs with a shared prefix
+    // compare equal and therefore cannot safely identify refresh sessions.
+    return false;
+  }
+
+  const presented = Buffer.from(digestRefreshToken(refreshToken), 'hex');
+  const stored = Buffer.from(storedDigest, 'hex');
+  return timingSafeEqual(presented, stored);
+}
+
 async function addRefreshSession(user, refreshToken, device) {
-  const tokenHash = await bcrypt.hash(refreshToken, 12);
+  const tokenHash = digestRefreshToken(refreshToken);
   const result = await User.updateOne(
     { _id: user._id, isActive: true },
     {
@@ -152,19 +169,12 @@ exports.refreshToken = async (req, res) => {
       return res.status(401).json({ message: "User no longer active." });
     }
 
-    // Find which stored session this refresh token belongs to. Each entry
-    // has its own bcrypt salt, so we have to compare against each one —
-    // there's no way to look it up by equality.
-    let matchedIndex = -1;
-    for (let i = 0; i < user.refreshTokens.length; i++) {
-      const isMatch = await bcrypt.compare(refreshToken, user.refreshTokens[i].tokenHash);
-      if (isMatch) {
-        matchedIndex = i;
-        break;
-      }
-    }
+    const oldTokenHash = digestRefreshToken(refreshToken);
+    const hasMatchingSession = user.refreshTokens.some((session) => (
+      refreshTokenMatchesDigest(refreshToken, session.tokenHash)
+    ));
 
-    if (matchedIndex === -1) {
+    if (!hasMatchingSession) {
       return res.status(401).json({ message: "Refresh token revoked or invalid." });
     }
 
@@ -172,17 +182,15 @@ exports.refreshToken = async (req, res) => {
     // captured/replayed old token stops working after this call.
     const newAccessToken = signAccessToken(user);
     const newRefreshToken = signRefreshToken(user);
-    const matchedSession = user.refreshTokens[matchedIndex];
-    const newTokenHash = await bcrypt.hash(newRefreshToken, 12);
+    const newTokenHash = digestRefreshToken(newRefreshToken);
     const rotation = await User.updateOne(
       {
         _id: user._id,
         isActive: true,
-        refreshTokens: {
-          $elemMatch: { _id: matchedSession._id, tokenHash: matchedSession.tokenHash },
-        },
+        'refreshTokens.tokenHash': oldTokenHash,
       },
-      { $set: { 'refreshTokens.$.tokenHash': newTokenHash } }
+      { $set: { 'refreshTokens.$[session].tokenHash': newTokenHash } },
+      { arrayFilters: [{ 'session.tokenHash': oldTokenHash }] }
     );
     if (rotation.modifiedCount !== 1) {
       return res.status(401).json({ message: 'Refresh token was already used or revoked.' });
@@ -215,25 +223,12 @@ exports.logout = async (req, res) => {
       return res.status(200).json({ message: "Logged out successfully." });
     }
 
-    const user = await User.findById(payload.userId).select("+refreshTokens.tokenHash");
-
-    if (user) {
-      // Only remove THIS device's session, not every logged-in device.
-      let matchedIndex = -1;
-      for (let i = 0; i < user.refreshTokens.length; i++) {
-        const isMatch = await bcrypt.compare(refreshToken, user.refreshTokens[i].tokenHash);
-        if (isMatch) {
-          matchedIndex = i;
-          break;
-        }
-      }
-      if (matchedIndex !== -1) {
-        await User.updateOne(
-          { _id: user._id },
-          { $pull: { refreshTokens: { _id: user.refreshTokens[matchedIndex]._id } } }
-        );
-      }
-    }
+    // The deterministic digest identifies exactly this token. Legacy bcrypt
+    // entries never match and are therefore already invalidated.
+    await User.updateOne(
+      { _id: payload.userId },
+      { $pull: { refreshTokens: { tokenHash: digestRefreshToken(refreshToken) } } }
+    );
 
     return res.status(200).json({ message: "Logged out successfully." });
   } catch (err) {

@@ -343,8 +343,10 @@ const userSchema = new mongoose.Schema(
     // CHANGED: was a single `refreshToken` field, which meant logging in
     // from a second device silently logged the first one out. Now stores
     // one hashed entry per active session so mobile + web can coexist.
-    // Store a HASH of the refresh token (never the raw token) so a DB leak
-    // doesn't hand out valid tokens directly.
+    // Store an exact SHA-256 digest of the high-entropy refresh JWT (never the
+    // raw token). Do not use bcrypt here: its 72-byte input limit makes two
+    // JWTs with a long shared prefix compare equal. Older bcrypt entries are
+    // intentionally treated as revoked by the authentication controller.
     refreshTokens: [
       {
         tokenHash: { type: String, required: true, select: false },
