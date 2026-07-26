@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { verifyToken, requireRole } = require('../middleware/auth');
+const { verifyToken, requireRole } = require('../middleware/auth.middleware');
 const clientController = require('../controllers/clientController');
 const savedLawyerController = require('../controllers/savedLawyerController');
-const blockedLawyerController = require('../controllers/blockedLawyerController');
+const blockedLawyerController = require('../controllers/blockedLawyersController');
 
 // Everything here belongs to the logged-in client only.
 router.use(verifyToken, requireRole('client'));

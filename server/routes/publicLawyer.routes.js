@@ -1,22 +1,47 @@
+// const express = require('express');
+// const router = express.Router();
+// const { verifyToken, requireRole } = require('../middleware/auth.middleware')
+// const clientController = require('../controllers/clientController');
+// const savedLawyerController = require('../controllers/savedLawyerController');
+// const blockedLawyerController = require('../controllers/blockedLawyersController');
+
+// // Everything here belongs to the logged-in client only.
+// router.use(verifyToken, requireRole('client'));
+
+// router.get('/me', clientController.getMyProfile);
+// router.patch('/me', clientController.updateMyProfile);
+
+// router.get('/me/saved-lawyers', savedLawyerController.getSavedLawyers);
+// router.post('/me/saved-lawyers/:lawyerId', savedLawyerController.saveLawyer);
+// router.delete('/me/saved-lawyers/:lawyerId', savedLawyerController.unsaveLawyer);
+
+// router.get('/me/blocked-lawyers', blockedLawyerController.getBlockedLawyers);
+// router.post('/me/blocked-lawyers/:lawyerId', blockedLawyerController.blockLawyer);
+// router.delete('/me/blocked-lawyers/:lawyerId', blockedLawyerController.unblockLawyer);
+
+// module.exports = router;
+// /**
+//  * const express = require('express');
+// const router = express.Router();
+// const { attachUserIfPresent } = require('../middleware/auth.middleware');
+// const publicLawyerController = require('../controllers/publicLawyerController');
+
+// // Public browsing — no login required. attachUserIfPresent means a logged-in
+// // client gets personalized fields (isSaved/isBlocked) but an anonymous
+// // visitor can still load these pages.
+// router.get('/', attachUserIfPresent, publicLawyerController.getLawyers);
+// router.get('/:id', attachUserIfPresent, publicLawyerController.getLawyerById);
+
+// module.exports = router;
+//  */
+
+
 const express = require('express');
 const router = express.Router();
-const { verifyToken, requireRole } = require('../middleware/auth.middleware')
-const clientController = require('../controllers/clientController');
-const savedLawyerController = require('../controllers/savedLawyerController');
-const blockedLawyerController = require('../controllers/blockedLawyerController');
+const { attachUserIfPresent } = require('../middleware/auth.middleware');
+const publicLawyerController = require('../controllers/publicLawyerController');
 
-// Everything here belongs to the logged-in client only.
-router.use(verifyToken, requireRole('client'));
-
-router.get('/me', clientController.getMyProfile);
-router.patch('/me', clientController.updateMyProfile);
-
-router.get('/me/saved-lawyers', savedLawyerController.getSavedLawyers);
-router.post('/me/saved-lawyers/:lawyerId', savedLawyerController.saveLawyer);
-router.delete('/me/saved-lawyers/:lawyerId', savedLawyerController.unsaveLawyer);
-
-router.get('/me/blocked-lawyers', blockedLawyerController.getBlockedLawyers);
-router.post('/me/blocked-lawyers/:lawyerId', blockedLawyerController.blockLawyer);
-router.delete('/me/blocked-lawyers/:lawyerId', blockedLawyerController.unblockLawyer);
+router.get('/', attachUserIfPresent, publicLawyerController.getLawyers);
+router.get('/:id', attachUserIfPresent, publicLawyerController.getLawyerById);
 
 module.exports = router;
