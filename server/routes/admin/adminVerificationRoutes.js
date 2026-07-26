@@ -6,6 +6,7 @@ const adminVerificationController = require('../../controllers/admin/adminVerifi
 // const adminVerificationController = require('../../controllers/admin/adminVerificationController');
 // const validateObjectId = require('../../middleware/validateObjectId.middleware');
 // const validateObjectId = require('../../middleware/validateObjectId.middleware');
+// const validateObjectId = require('../../middleware/validateObjectId.middleware');
 router.use(verifyToken, requireRole('admin'));
 
 router.get('/pending/:type', adminVerificationController.getPendingDocuments);
