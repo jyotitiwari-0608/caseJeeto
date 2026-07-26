@@ -2,14 +2,18 @@ import type {
   AuthResponse,
   Booking,
   BookingsResponse,
+  BlockedLawyer,
+  BlockedLawyersResponse,
   Lawyer,
   LawyerDashboardSummary,
   LawyerFilters,
-  LawyerProfileInput,
+  LawyerProfileResponse,
+  LawyerProfileWriteInput,
   LawyerResponse,
   LawyersResponse,
   PaginationMeta,
   SavedLawyer,
+  SavedLawyerMutationResponse,
   SavedLawyersResponse,
   TokenRefreshResponse,
   UserRole,
@@ -19,7 +23,12 @@ const defaultApiUrl = import.meta.env?.DEV ? 'http://localhost:5000/api' : '/api
 export const API_URL = (import.meta.env?.VITE_API_URL || defaultApiUrl).replace(/\/$/, '')
 export const DEMO_DATA_ENABLED = Boolean(import.meta.env?.DEV) || import.meta.env?.VITE_ENABLE_DEMO_DATA === 'true'
 
-export type ApiErrorKind = 'http' | 'network' | 'timeout' | 'aborted' | 'invalid-response'
+export type ApiErrorKind = 'http' | 'network' | 'timeout' | 'aborted' | 'invalid-response' | 'superseded'
+
+export interface AuthenticatedRequestScope {
+  expectedUserId: string
+  isCurrentAccount: (expectedUserId: string) => boolean
+}
 
 class ApiError extends Error {
   status: number | null
@@ -65,6 +74,13 @@ interface RequestOptions {
   authRetry?: boolean
   timeoutMs?: number
   parser?: (value: unknown, status: number) => unknown
+  authScope?: AuthenticatedRequestScope
+}
+
+function assertCurrentRequestAccount(scope?: AuthenticatedRequestScope) {
+  if (scope && !scope.isCurrentAccount(scope.expectedUserId)) {
+    throw new ApiError('This request belongs to a superseded account session.', null, 'superseded')
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -158,6 +174,14 @@ function isSavedLawyer(value: unknown): value is SavedLawyer {
     typeof value.isAvailable === 'boolean'
 }
 
+function isBlockedLawyer(value: unknown): value is BlockedLawyer {
+  if (!isRecord(value) || !isRecord(value.user)) return false
+  return isNonEmptyString(value._id) &&
+    isNonEmptyString(value.user._id) &&
+    isNonEmptyString(value.user.name) &&
+    isStringArray(value.specialization)
+}
+
 function isLawyersResponse(value: unknown): value is LawyersResponse {
   return hasDataObject(value) && Array.isArray(value.data.lawyers) &&
     value.data.lawyers.every(isLawyer) && isPaginationMeta(value.meta)
@@ -168,6 +192,19 @@ function isLawyerResponse(value: unknown): value is LawyerResponse {
     typeof value.data.isSaved === 'boolean' && typeof value.data.isBlocked === 'boolean'
 }
 
+function isLawyerProfileResponse(value: unknown): value is LawyerProfileResponse {
+  if (!isRecord(value) || !isRecord(value.lawyer)) return false
+  const lawyer = value.lawyer
+  return isStringArray(lawyer.specialization) &&
+    isFiniteNonNegative(lawyer.yearsOfExperience) &&
+    isStringArray(lawyer.courtsPracticed) &&
+    isStringArray(lawyer.languages) &&
+    isFiniteNonNegative(lawyer.consultationFee) &&
+    isOptionalString(lawyer.bio) &&
+    isOptionalString(lawyer.officeAddress) &&
+    isOptionalString(lawyer.profilePhoto)
+}
+
 function isBookingsResponse(value: unknown): value is BookingsResponse {
   return hasDataObject(value) && Array.isArray(value.data.bookings) &&
     value.data.bookings.every(isBooking) && isPaginationMeta(value.meta)
@@ -176,6 +213,15 @@ function isBookingsResponse(value: unknown): value is BookingsResponse {
 function isSavedLawyersResponse(value: unknown): value is SavedLawyersResponse {
   return hasDataObject(value) && Array.isArray(value.data.savedLawyers) &&
     value.data.savedLawyers.every(isSavedLawyer)
+}
+
+function isSavedLawyerMutationResponse(value: unknown): value is SavedLawyerMutationResponse {
+  return hasDataObject(value) && isStringArray(value.data.savedLawyers)
+}
+
+function isBlockedLawyersResponse(value: unknown): value is BlockedLawyersResponse {
+  return hasDataObject(value) && Array.isArray(value.data.blockedLawyers) &&
+    value.data.blockedLawyers.every(isBlockedLawyer)
 }
 
 function isLawyerDashboardSummary(value: unknown): value is LawyerDashboardSummary {
@@ -204,6 +250,10 @@ export function parseLawyerResponse(value: unknown, status = 200) {
   return parseResponse(value, status, 'lawyer profile', isLawyerResponse)
 }
 
+export function parseLawyerProfileResponse(value: unknown, status = 200) {
+  return parseResponse(value, status, 'lawyer self-profile', isLawyerProfileResponse)
+}
+
 export function parseBookingsResponse(value: unknown, status = 200) {
   return parseResponse(value, status, 'booking', isBookingsResponse)
 }
@@ -212,11 +262,31 @@ export function parseSavedLawyersResponse(value: unknown, status = 200) {
   return parseResponse(value, status, 'saved lawyer', isSavedLawyersResponse)
 }
 
+export function parseSavedLawyerMutationResponse(value: unknown, status = 200) {
+  return parseResponse(value, status, 'saved-lawyer update', isSavedLawyerMutationResponse)
+}
+
+export function parseBlockedLawyersResponse(value: unknown, status = 200) {
+  return parseResponse(value, status, 'blocked lawyer', isBlockedLawyersResponse)
+}
+
+export function deriveAuthoritativeClientLawyerState(
+  lawyerId: string,
+  savedLawyers: SavedLawyer[] = [],
+  blockedLawyers: BlockedLawyer[] = [],
+) {
+  return {
+    isSaved: savedLawyers.some((lawyer) => lawyer._id === lawyerId),
+    isBlocked: blockedLawyers.some((lawyer) => lawyer._id === lawyerId),
+  }
+}
+
 export function parseLawyerDashboardSummary(value: unknown, status = 200) {
   return parseResponse(value, status, 'lawyer dashboard', isLawyerDashboardSummary)
 }
 
 async function request<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<T> {
+  assertCurrentRequestAccount(options.authScope)
   const headers = new Headers(init.headers)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
@@ -237,6 +307,7 @@ async function request<T>(path: string, init: RequestInit = {}, options: Request
         const authorization = headers.get('Authorization')
         const failedAccessToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
         const refreshedAccessToken = await refreshAccessTokenOnce(failedAccessToken)
+        assertCurrentRequestAccount(options.authScope)
         if (refreshedAccessToken) {
           const retryHeaders = new Headers(headers)
           retryHeaders.set('Authorization', `Bearer ${refreshedAccessToken}`)
@@ -251,6 +322,7 @@ async function request<T>(path: string, init: RequestInit = {}, options: Request
         : 'The request could not be completed.'
       throw new ApiError(message, response.status)
     }
+    assertCurrentRequestAccount(options.authScope)
     if (body === null) throw new ApiError('The server returned an unreadable response.', response.status, 'invalid-response')
     return options.parser ? options.parser(body, response.status) as T : body as T
   } catch (error) {
@@ -281,11 +353,8 @@ export const api = {
     const query = queryString(filters)
     return request<LawyersResponse>(`/lawyers${query ? `?${query}` : ''}`, { signal }, { parser: parseLawyersResponse })
   },
-  getLawyer(id: string, accessToken?: string, signal?: AbortSignal) {
-    return request<LawyerResponse>(`/lawyers/${encodeURIComponent(id)}`, {
-      signal,
-      headers: accessToken ? bearer(accessToken) : undefined,
-    }, { authenticated: Boolean(accessToken), parser: parseLawyerResponse })
+  getLawyer(id: string, signal?: AbortSignal) {
+    return request<LawyerResponse>(`/lawyers/${encodeURIComponent(id)}`, { signal }, { parser: parseLawyerResponse })
   },
   login(email: string, password: string) {
     return request<AuthResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, { parser: (value, status) => parseResponse(value, status, 'authentication', isAuthResponse) })
@@ -303,10 +372,13 @@ export const api = {
       method: 'POST', body: JSON.stringify({ refreshToken }),
     }, { parser: (value, status) => parseResponse(value, status, 'logout', (input): input is { message: string } => isRecord(input) && typeof input.message === 'string') })
   },
-  updateLawyerProfile(input: Partial<LawyerProfileInput>, accessToken: string) {
-    return request<{ lawyer: unknown }>('/lawyers/me', {
+  updateLawyerProfile(input: Partial<LawyerProfileWriteInput>, accessToken: string, authScope?: AuthenticatedRequestScope) {
+    return request<LawyerProfileResponse>('/lawyers/me', {
       method: 'PATCH', headers: bearer(accessToken), body: JSON.stringify(input),
-    }, { authenticated: true, parser: (value, status) => parseResponse(value, status, 'lawyer profile update', (input): input is { lawyer: unknown } => isRecord(input) && isRecord(input.lawyer)) })
+    }, { authenticated: true, parser: parseLawyerProfileResponse, authScope })
+  },
+  getLawyerProfile(accessToken: string, signal?: AbortSignal, authScope?: AuthenticatedRequestScope) {
+    return request<LawyerProfileResponse>('/lawyers/me', { headers: bearer(accessToken), signal }, { authenticated: true, parser: parseLawyerProfileResponse, authScope })
   },
   getLawyerDashboard(accessToken: string, signal?: AbortSignal) {
     return request<LawyerDashboardSummary>('/lawyers/me/dashboard', { headers: bearer(accessToken), signal }, { authenticated: true, parser: parseLawyerDashboardSummary })
@@ -314,8 +386,21 @@ export const api = {
   getClientBookings(accessToken: string, signal?: AbortSignal) {
     return request<BookingsResponse>('/bookings?limit=20', { headers: bearer(accessToken), signal }, { authenticated: true, parser: parseBookingsResponse })
   },
-  getSavedLawyers(accessToken: string, signal?: AbortSignal) {
-    return request<SavedLawyersResponse>('/clients/me/saved-lawyers', { headers: bearer(accessToken), signal }, { authenticated: true, parser: parseSavedLawyersResponse })
+  getSavedLawyers(accessToken: string, signal?: AbortSignal, authScope?: AuthenticatedRequestScope) {
+    return request<SavedLawyersResponse>('/clients/me/saved-lawyers', { headers: bearer(accessToken), signal }, { authenticated: true, parser: parseSavedLawyersResponse, authScope })
+  },
+  getBlockedLawyers(accessToken: string, signal?: AbortSignal, authScope?: AuthenticatedRequestScope) {
+    return request<BlockedLawyersResponse>('/clients/me/blocked-lawyers', { headers: bearer(accessToken), signal }, { authenticated: true, parser: parseBlockedLawyersResponse, authScope })
+  },
+  saveLawyer(lawyerId: string, accessToken: string, authScope?: AuthenticatedRequestScope) {
+    return request<SavedLawyerMutationResponse>(`/clients/me/saved-lawyers/${encodeURIComponent(lawyerId)}`, {
+      method: 'POST', headers: bearer(accessToken),
+    }, { authenticated: true, parser: parseSavedLawyerMutationResponse, authScope })
+  },
+  unsaveLawyer(lawyerId: string, accessToken: string, authScope?: AuthenticatedRequestScope) {
+    return request<SavedLawyerMutationResponse>(`/clients/me/saved-lawyers/${encodeURIComponent(lawyerId)}`, {
+      method: 'DELETE', headers: bearer(accessToken),
+    }, { authenticated: true, parser: parseSavedLawyerMutationResponse, authScope })
   },
 }
 

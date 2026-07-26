@@ -3,13 +3,17 @@ import test from 'node:test'
 import {
   ApiError,
   api,
+  deriveAuthoritativeClientLawyerState,
   isAuthResponse,
   isTokenRefreshResponse,
   parseBookingsResponse,
+  parseBlockedLawyersResponse,
   parseLawyerDashboardSummary,
+  parseLawyerProfileResponse,
   parseLawyerResponse,
   parseLawyersResponse,
   parseSavedLawyersResponse,
+  parseSavedLawyerMutationResponse,
   shouldUseDemoFallback,
   setAuthRefreshHandler,
   setUnauthorizedHandler,
@@ -17,7 +21,7 @@ import {
 import { demoLawyers } from '../data/lawyers.ts'
 import { lawyerSearchDestination, practiceAreaForSearch } from './discovery.ts'
 import { hashTargetId, isUnmodifiedPrimaryActivation, scrollRepeatedHashDestination, scrollToLocationHash, shouldResetScroll } from './navigation.ts'
-import { AUTH_STORAGE_KEY, clearSession, commitRotatedSession, isStoredAuth, normalizePhoneNumber, privateQueryKey, readStoredAuth, roleFromSearchParams, writeStoredAuth } from './session.ts'
+import { AUTH_STORAGE_KEY, advocateFirstName, clearSession, commitRotatedSession, isStoredAuth, normalizePhoneNumber, privateQueryKey, readStoredAuth, roleFromSearchParams, writeStoredAuth } from './session.ts'
 
 test('clearSession removes auth and clears cached private data', () => {
   let removed = ''
@@ -45,7 +49,7 @@ test('demo fallback is restricted to enabled network failures', () => {
   assert.equal(shouldUseDemoFallback(new ApiError('offline', null, 'network'), false), false)
 })
 
-test('a bundled demo lawyer ID still resolves through the live API and preserves live account state', async () => {
+test('public lawyer detail never sends a possibly expired access token', async () => {
   const originalFetch = globalThis.fetch
   const demoId = demoLawyers[0]._id
   let requestedUrl = ''
@@ -65,9 +69,9 @@ test('a bundled demo lawyer ID still resolves through the live API and preserves
   }
 
   try {
-    const response = await api.getLawyer(demoId, 'live-access-token')
+    const response = await api.getLawyer(demoId)
     assert.match(requestedUrl, new RegExp(`/lawyers/${demoId}$`))
-    assert.equal(authorization, 'Bearer live-access-token')
+    assert.equal(authorization, '')
     assert.equal(response.data.lawyer.user.name, 'Adv. Live Profile')
     assert.equal(response.data.isSaved, true)
     assert.equal(response.data.isBlocked, true)
@@ -135,6 +139,61 @@ test('concurrent authenticated 401 responses share one refresh and retry with th
   }
 })
 
+test('an account switch during 401 refresh never retries the originating mutation as the new account', async () => {
+  const originalFetch = globalThis.fetch
+  let activeUserId = 'user-a'
+  const authorizations: string[] = []
+  let unauthorizedCalls = 0
+  globalThis.fetch = async (_input, init) => {
+    authorizations.push(new Headers(init?.headers).get('Authorization') || '')
+    return new Response(JSON.stringify({ message: 'Expired token.' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+  setAuthRefreshHandler(async () => {
+    activeUserId = 'user-b'
+    return 'user-b-access'
+  })
+  setUnauthorizedHandler(() => { unauthorizedCalls += 1 })
+
+  try {
+    await assert.rejects(
+      api.updateLawyerProfile({ bio: 'Account A update' }, 'user-a-access', {
+        expectedUserId: 'user-a', isCurrentAccount: (expectedUserId) => activeUserId === expectedUserId,
+      }),
+      (error: unknown) => error instanceof ApiError && error.kind === 'superseded',
+    )
+    assert.deepEqual(authorizations, ['Bearer user-a-access'])
+    assert.equal(unauthorizedCalls, 0)
+  } finally {
+    setAuthRefreshHandler(null)
+    setUnauthorizedHandler(null)
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a successful response superseded by an account switch cannot reach cache callbacks', async () => {
+  const originalFetch = globalThis.fetch
+  let activeUserId = 'user-a'
+  let cacheWrites = 0
+  globalThis.fetch = async () => {
+    activeUserId = 'user-b'
+    return new Response(JSON.stringify({ lawyer: {
+      specialization: [], yearsOfExperience: 0, courtsPracticed: [], languages: [], consultationFee: 0,
+    } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  try {
+    await api.updateLawyerProfile({ bio: 'Account A update' }, 'user-a-access', {
+      expectedUserId: 'user-a', isCurrentAccount: (expectedUserId) => activeUserId === expectedUserId,
+    }).then(() => { cacheWrites += 1 }).catch((error: unknown) => {
+      assert.ok(error instanceof ApiError)
+      assert.equal(error.kind, 'superseded')
+    })
+    assert.equal(cacheWrites, 0)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('logout sends the active refresh token for server-side revocation', async () => {
   const originalFetch = globalThis.fetch
   let requestBody: unknown
@@ -189,6 +248,100 @@ test('logout during an in-flight refresh cannot resurrect the session and revoke
 test('private query keys are account scoped', () => {
   assert.deepEqual(privateQueryKey('client-bookings', 'client-a'), ['client-bookings', 'client-a'])
   assert.notDeepEqual(privateQueryKey('client-bookings', 'client-a'), privateQueryKey('client-bookings', 'client-b'))
+  assert.notDeepEqual(privateQueryKey('lawyer-profile', 'lawyer-a'), privateQueryKey('lawyer-profile', 'lawyer-b'))
+})
+
+test('client lawyer state is derived only from authenticated saved and blocked lists', () => {
+  const saved = [{ _id: 'lawyer-1', user: { _id: 'user-1', name: 'A' }, specialization: [], consultationFee: 1000, rating: 4, isAvailable: true }]
+  const blocked = [{ _id: 'lawyer-2', user: { _id: 'user-2', name: 'B' }, specialization: [] }]
+  assert.deepEqual(deriveAuthoritativeClientLawyerState('lawyer-1', saved, blocked), { isSaved: true, isBlocked: false })
+  assert.deepEqual(deriveAuthoritativeClientLawyerState('lawyer-2', saved, blocked), { isSaved: false, isBlocked: true })
+})
+
+test('advocate greetings remove a leading professional title', () => {
+  assert.equal(advocateFirstName('Adv. Meera Sethi'), 'Meera')
+  assert.equal(advocateFirstName('  adv. Arjun Malhotra  '), 'Arjun')
+  assert.equal(advocateFirstName('Nandita Rao'), 'Nandita')
+})
+
+test('lawyer self-profile uses authenticated GET and PATCH requests', async () => {
+  const originalFetch = globalThis.fetch
+  const calls: Array<{ url: string; method: string; authorization: string; body?: unknown }> = []
+  const profile = {
+    specialization: ['Family Law'],
+    yearsOfExperience: 12,
+    courtsPracticed: ['Delhi High Court'],
+    languages: ['English', 'Hindi'],
+    consultationFee: 2000,
+    bio: 'Family law counsel.',
+    officeAddress: 'New Delhi',
+  }
+
+  globalThis.fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      method: init?.method || 'GET',
+      authorization: new Headers(init?.headers).get('Authorization') || '',
+      ...(init?.body && { body: JSON.parse(String(init.body)) }),
+    })
+    return new Response(JSON.stringify({ lawyer: profile }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  try {
+    const loaded = await api.getLawyerProfile('lawyer-access')
+    const updated = await api.updateLawyerProfile({ bio: 'Updated professional introduction.' }, 'lawyer-access')
+    assert.equal(loaded.lawyer.officeAddress, 'New Delhi')
+    assert.equal(updated.lawyer.bio, 'Family law counsel.')
+    assert.match(calls[0].url, /\/api\/lawyers\/me$/)
+    assert.match(calls[1].url, /\/api\/lawyers\/me$/)
+    assert.deepEqual(calls.map(({ method, authorization, body }) => ({ method, authorization, body })), [
+      { method: 'GET', authorization: 'Bearer lawyer-access', body: undefined },
+      { method: 'PATCH', authorization: 'Bearer lawyer-access', body: { bio: 'Updated professional introduction.' } },
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('saved-lawyer client methods use the matching POST and DELETE endpoints', async () => {
+  const originalFetch = globalThis.fetch
+  const calls: Array<{ url: string; method: string; authorization: string }> = []
+
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), method: init?.method || 'GET', authorization: new Headers(init?.headers).get('Authorization') || '' })
+    return new Response(JSON.stringify({ success: true, data: { savedLawyers: ['lawyer-1'] } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  try {
+    await api.saveLawyer('lawyer-1', 'client-access')
+    await api.unsaveLawyer('lawyer-1', 'client-access')
+    assert.match(calls[0].url, /\/clients\/me\/saved-lawyers\/lawyer-1$/)
+    assert.match(calls[1].url, /\/clients\/me\/saved-lawyers\/lawyer-1$/)
+    assert.deepEqual(calls.map(({ method, authorization }) => ({ method, authorization })), [
+      { method: 'POST', authorization: 'Bearer client-access' },
+      { method: 'DELETE', authorization: 'Bearer client-access' },
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('blocked-lawyer state uses the protected client endpoint', async () => {
+  const originalFetch = globalThis.fetch
+  let requestedUrl = ''
+  let authorization = ''
+  globalThis.fetch = async (input, init) => {
+    requestedUrl = String(input)
+    authorization = new Headers(init?.headers).get('Authorization') || ''
+    return new Response(JSON.stringify({ success: true, data: { blockedLawyers: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  try {
+    await api.getBlockedLawyers('client-access')
+    assert.match(requestedUrl, /\/clients\/me\/blocked-lawyers$/)
+    assert.equal(authorization, 'Bearer client-access')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('Indian and E.164 phones are normalized and invalid numbers rejected', () => {
@@ -307,6 +460,22 @@ test('malformed saved-lawyer contracts are rejected before nested fields are ren
       }],
     },
   }), 'saved lawyer')
+})
+
+test('malformed self-profile and saved mutation contracts are rejected', () => {
+  assertInvalidContract(() => parseLawyerProfileResponse({
+    lawyer: {
+      specialization: ['Family Law'], yearsOfExperience: '12', courtsPracticed: [], languages: ['English'], consultationFee: 2000,
+    },
+  }), 'lawyer self-profile')
+
+  assertInvalidContract(() => parseSavedLawyerMutationResponse({
+    success: true, data: { savedLawyers: [{ _id: 'lawyer-1' }] },
+  }), 'saved-lawyer update')
+
+  assertInvalidContract(() => parseBlockedLawyersResponse({
+    success: true, data: { blockedLawyers: [{ _id: 'lawyer-1', user: { _id: 'user-1' }, specialization: [] }] },
+  }), 'blocked lawyer')
 })
 
 test('malformed dashboard contracts are rejected before numeric rendering', () => {

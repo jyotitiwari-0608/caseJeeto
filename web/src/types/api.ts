@@ -75,7 +75,7 @@ export interface LawyerFilters {
   limit?: number
 }
 
-export interface LawyerProfileInput {
+export interface LawyerProfileWriteInput {
   specialization: string[]
   yearsOfExperience: number
   courtsPracticed: string[]
@@ -83,6 +83,21 @@ export interface LawyerProfileInput {
   consultationFee: number
   bio: string
   officeAddress: string
+}
+
+export interface LawyerProfile {
+  specialization: string[]
+  yearsOfExperience: number
+  courtsPracticed: string[]
+  languages: string[]
+  consultationFee: number
+  bio?: string
+  officeAddress?: string
+  profilePhoto?: string
+}
+
+export interface LawyerProfileResponse {
+  lawyer: LawyerProfile
 }
 
 export interface Booking {
@@ -116,6 +131,22 @@ export interface SavedLawyer {
 export interface SavedLawyersResponse {
   success: true
   data: { savedLawyers: SavedLawyer[] }
+}
+
+export interface SavedLawyerMutationResponse {
+  success: true
+  data: { savedLawyers: string[] }
+}
+
+export interface BlockedLawyer {
+  _id: string
+  user: { _id: string; name: string }
+  specialization: string[]
+}
+
+export interface BlockedLawyersResponse {
+  success: true
+  data: { blockedLawyers: BlockedLawyer[] }
 }
 
 export interface LawyerDashboardSummary {

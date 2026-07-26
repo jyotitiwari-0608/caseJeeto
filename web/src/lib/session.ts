@@ -112,6 +112,11 @@ export function accountDestination(role: UserRole) {
   return '/unsupported-account'
 }
 
+export function advocateFirstName(name: string) {
+  const withoutTitle = name.trim().replace(/^Adv\.\s*/i, '')
+  return withoutTitle.split(/\s+/)[0] || 'Advocate'
+}
+
 export function normalizePhoneNumber(input: string) {
   const compact = input.trim().replace(/[\s()-]/g, '')
   if (/^[6-9]\d{9}$/.test(compact)) return `+91${compact}`
