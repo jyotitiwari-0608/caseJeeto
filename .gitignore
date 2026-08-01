@@ -14,6 +14,9 @@ client/.next/
 client/dist/
 client/build/
 client/out/
+web/dist/
+server/dist/
+server/coverage/
 
 # logs
 *.log
