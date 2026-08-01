@@ -1,16 +1,23 @@
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Bookmark, CalendarDays, FolderOpen, LayoutDashboard, MessageSquare, Search, Settings, ShieldCheck, Star } from 'lucide-react'
-import { Link, useLocation } from 'react-router-dom'
+import { ArrowRight, Bookmark, CalendarDays, FolderOpen, LayoutDashboard, MessageSquare, ReceiptText, Search, Settings, ShieldCheck, Star } from 'lucide-react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ChatWindow } from '@/components/chat-window'
 import { DashboardShell, type DashboardLink } from '@/components/dashboard-shell'
 import { ErrorState } from '@/components/page-state'
+import { RazorpayPaymentButton } from '@/components/razorpay-payment-button'
+import { RefundDialog } from '@/components/refund-dialog'
+import { ReviewDialog } from '@/components/review-dialog'
 import { Badge } from '@/components/ui/badge'
-import { buttonVariants } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/auth-context'
-import { api } from '@/lib/api'
+import { ApiError, api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { privateQueryKey } from '@/lib/session'
+import type { Booking } from '@/types/api'
 
 const links: DashboardLink[] = [
   { label: 'Overview', to: '/workspace', icon: LayoutDashboard },
@@ -18,6 +25,7 @@ const links: DashboardLink[] = [
   { label: 'Consultations', to: '/workspace/consultations', icon: CalendarDays },
   { label: 'Saved lawyers', to: '/workspace/saved', icon: Bookmark },
   { label: 'Messages', to: '/workspace/messages', icon: MessageSquare },
+  { label: 'Refunds', to: '/workspace/refunds', icon: ReceiptText },
   { label: 'Settings', to: '/workspace/settings', icon: Settings },
 ]
 
@@ -66,17 +74,100 @@ function Overview() {
   )
 }
 
-function BookingList({ bookings }: { bookings: import('@/types/api').Booking[] }) {
-  return <div className="divide-y border-y">{bookings.map((booking) => <article key={booking._id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{booking.lawyerId.specialization.join(', ') || 'Legal consultation'}</p><p className="mt-1 text-sm text-muted-foreground">{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(booking.scheduledAt))} · {booking.durationMinutes} minutes</p></div><div className="flex items-center gap-3"><Badge variant="secondary">{booking.status}</Badge><span className="text-sm font-medium">₹{booking.lawyerId.consultationFee.toLocaleString('en-IN')}</span></div></article>)}</div>
+interface BookingListProps {
+  bookings: Booking[]
+  interactive?: boolean
+  onChanged?: () => void
+  reviewedBookingIds?: Set<string>
+  onReviewed?: (bookingId: string) => void
+}
+
+function BookingList({ bookings, interactive = false, onChanged, reviewedBookingIds, onReviewed }: BookingListProps) {
+  const { accessToken } = useAuth()
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
+
+  async function cancel(bookingId: string) {
+    if (!accessToken) return
+    setCancellingId(bookingId)
+    try {
+      await api.cancelBooking(bookingId, accessToken)
+      toast.success('Consultation cancelled')
+      onChanged?.()
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : 'This booking could not be cancelled.')
+    } finally {
+      setCancellingId(null)
+    }
+  }
+
+  return (
+    <div className="divide-y border-y">
+      {bookings.map((booking) => {
+        const label = booking.lawyerId.name || booking.lawyerId.specialization.join(', ') || 'Legal consultation'
+        const hasPayment = Boolean(booking.paymentId)
+        const alreadyReviewed = reviewedBookingIds?.has(booking._id)
+        return (
+          <article key={booking._id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-medium">{label}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(booking.scheduledAt))} · {booking.durationMinutes} minutes</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">{booking.status}</Badge>
+              <span className="text-sm font-medium">₹{booking.lawyerId.consultationFee.toLocaleString('en-IN')}</span>
+              {interactive && booking.status === 'pending' && (
+                <RazorpayPaymentButton booking={booking} onPaid={() => onChanged?.()} />
+              )}
+              {interactive && ['pending', 'confirmed'].includes(booking.status) && (
+                <Button size="sm" variant="destructive" onClick={() => void cancel(booking._id)} disabled={cancellingId === booking._id}>
+                  {cancellingId === booking._id ? 'Cancelling…' : 'Cancel'}
+                </Button>
+              )}
+              {interactive && booking.status === 'completed' && !alreadyReviewed && (
+                <ReviewDialog bookingId={booking._id} onSubmitted={() => onReviewed?.(booking._id)} trigger={<Button size="sm" variant="outline">Leave a review</Button>} />
+              )}
+              {interactive && booking.status === 'completed' && alreadyReviewed && (
+                <Badge variant="outline">Reviewed</Badge>
+              )}
+              {interactive && ['confirmed', 'cancelled'].includes(booking.status) && hasPayment && (
+                <RefundDialog bookingId={booking._id} onSubmitted={() => onChanged?.()} trigger={<Button size="sm" variant="outline">Request refund</Button>} />
+              )}
+            </div>
+          </article>
+        )
+      })}
+    </div>
+  )
 }
 
 function ConsultationsSection() {
   const { user, accessToken } = useAuth()
-  const query = useQuery({ queryKey: privateQueryKey('client-bookings', user!.id), queryFn: ({ signal }) => api.getClientBookings(accessToken!, signal), enabled: Boolean(user && accessToken), retry: false })
+  const queryKey = privateQueryKey('client-bookings', user!.id)
+  const query = useQuery({ queryKey, queryFn: ({ signal }) => api.getClientBookings(accessToken!, signal), enabled: Boolean(user && accessToken), retry: false })
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set())
+
   if (query.isLoading) return <div><h1 className="font-heading text-3xl font-semibold">Consultations</h1><Skeleton className="mt-7 h-40 w-full" /></div>
   if (query.isError) return <ErrorState title="Consultations unavailable" message="We could not load bookings from the CaseJeeto API." onRetry={() => void query.refetch()} />
   const bookings = query.data?.data.bookings || []
-  return <div><h1 className="font-heading text-3xl font-semibold">Consultations</h1><p className="mt-2 text-muted-foreground">Appointments recorded by the booking service.</p>{bookings.length > 0 ? <div className="mt-7"><BookingList bookings={bookings} /></div> : <EmptyWorkspaceSection icon={CalendarDays} title="Your consultation diary is clear" body="No bookings are recorded for this account." action="Browse lawyers" to="/lawyers" />}</div>
+  return (
+    <div>
+      <h1 className="font-heading text-3xl font-semibold">Consultations</h1>
+      <p className="mt-2 text-muted-foreground">Appointments recorded by the booking service. Pay a pending request, cancel, leave a review once completed, or request a refund on a paid booking.</p>
+      {bookings.length > 0 ? (
+        <div className="mt-7">
+          <BookingList
+            bookings={bookings}
+            interactive
+            onChanged={() => void query.refetch()}
+            reviewedBookingIds={reviewedIds}
+            onReviewed={(id) => setReviewedIds((previous) => new Set(previous).add(id))}
+          />
+        </div>
+      ) : (
+        <EmptyWorkspaceSection icon={CalendarDays} title="Your consultation diary is clear" body="No bookings are recorded for this account." action="Browse lawyers" to="/lawyers" />
+      )}
+    </div>
+  )
 }
 
 function SavedLawyersSection() {
@@ -88,6 +179,121 @@ function SavedLawyersSection() {
   return <div><h1 className="font-heading text-3xl font-semibold">Saved lawyers</h1><p className="mt-2 text-muted-foreground">Your private shortlist, loaded from your client account.</p>{lawyers.length > 0 ? <div className="mt-7 divide-y border-y">{lawyers.map((lawyer) => <article key={lawyer._id} className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><h2 className="font-heading text-lg font-semibold">{lawyer.user.name}</h2>{!lawyer.isAvailable && <Badge variant="secondary">Currently unavailable</Badge>}</div><p className="mt-1 text-sm text-muted-foreground">{lawyer.specialization.join(', ') || 'Practice areas not listed'}</p></div><div className="flex items-center gap-4"><span className="flex items-center gap-1 text-sm"><Star className="size-4 text-primary" /> {lawyer.rating.toFixed(1)}</span><span className="text-sm font-medium">₹{lawyer.consultationFee.toLocaleString('en-IN')}</span><Link to={`/lawyers/${lawyer._id}`} className={buttonVariants({ variant: 'outline' })}>View</Link></div></article>)}</div> : <EmptyWorkspaceSection icon={Bookmark} title="Build a thoughtful shortlist" body="No lawyers are saved for this account yet." action="Start comparing" to="/lawyers" />}</div>
 }
 
+function MessagesSection() {
+  const { accessToken } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedConversationId = searchParams.get('conversation')
+  const [activeId, setActiveId] = useState<string | null>(requestedConversationId)
+
+  const conversationsQuery = useQuery({
+    queryKey: ['client-conversations'],
+    queryFn: ({ signal }) => api.getClientConversations(accessToken!, signal),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+
+  useEffect(() => {
+    if (requestedConversationId) setActiveId(requestedConversationId)
+  }, [requestedConversationId])
+
+  useEffect(() => {
+    if (!activeId && conversationsQuery.data?.data.conversations.length) {
+      setActiveId(conversationsQuery.data.data.conversations[0]._id)
+    }
+  }, [activeId, conversationsQuery.data])
+
+  const messagesQuery = useQuery({
+    queryKey: ['client-conversation-messages', activeId],
+    queryFn: ({ signal }) => api.getClientConversationMessages(activeId!, accessToken!, signal),
+    enabled: Boolean(accessToken && activeId),
+    retry: false,
+  })
+
+  function selectConversation(id: string) {
+    setActiveId(id)
+    setSearchParams({ conversation: id })
+  }
+
+  const conversations = conversationsQuery.data?.data.conversations || []
+
+  return (
+    <div>
+      <h1 className="font-heading text-3xl font-semibold">Messages</h1>
+      <p className="mt-2 text-muted-foreground">Conversations with advocates you've messaged from their profile.</p>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-[18rem_1fr]">
+        <div className="rounded-xl border bg-card">
+          {conversationsQuery.isLoading ? (
+            <div className="space-y-2 p-3"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>
+          ) : conversationsQuery.isError ? (
+            <p className="p-4 text-sm text-muted-foreground">Conversations could not be loaded.</p>
+          ) : conversations.length > 0 ? (
+            <div className="divide-y">
+              {conversations.map((conversation) => (
+                <button
+                  key={conversation._id}
+                  type="button"
+                  onClick={() => selectConversation(conversation._id)}
+                  className={cn('flex w-full flex-col items-start gap-0.5 px-4 py-3 text-left text-sm hover:bg-muted', activeId === conversation._id && 'bg-muted')}
+                >
+                  <span className="font-medium">{conversation.lawyerId.name}</span>
+                  <span className="line-clamp-1 text-xs text-muted-foreground">{conversation.messages[0]?.text || 'No messages yet'}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="p-4 text-sm text-muted-foreground">No conversations yet. Message an advocate from their profile to start one.</p>
+          )}
+        </div>
+
+        <div>
+          {!activeId ? (
+            <div className="grid h-[32rem] place-items-center rounded-xl border bg-card text-sm text-muted-foreground">Select a conversation</div>
+          ) : messagesQuery.isLoading ? (
+            <Skeleton className="h-[32rem] w-full" />
+          ) : messagesQuery.isError ? (
+            <ErrorState title="Messages unavailable" message="This conversation's history could not be loaded." onRetry={() => void messagesQuery.refetch()} />
+          ) : (
+            <ChatWindow conversationId={activeId} initialMessages={messagesQuery.data?.data.messages || []} />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RefundsSection() {
+  const { accessToken } = useAuth()
+  const query = useQuery({ queryKey: ['client-refunds'], queryFn: ({ signal }) => api.getMyRefunds(accessToken!, signal), enabled: Boolean(accessToken), retry: false })
+
+  if (query.isLoading) return <div><h1 className="font-heading text-3xl font-semibold">Refunds</h1><Skeleton className="mt-7 h-40 w-full" /></div>
+  if (query.isError) return <ErrorState title="Refunds unavailable" message="We could not load your refund requests." onRetry={() => void query.refetch()} />
+  const refunds = query.data?.data.refunds || []
+
+  return (
+    <div>
+      <h1 className="font-heading text-3xl font-semibold">Refunds</h1>
+      <p className="mt-2 text-muted-foreground">Requests you've submitted from a paid or cancelled consultation, and their review status.</p>
+      {refunds.length > 0 ? (
+        <div className="mt-7 divide-y border-y">
+          {refunds.map((refund) => (
+            <article key={refund._id} className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-medium">{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(new Date(refund.bookingId.scheduledAt))}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{refund.refundReason.replaceAll('_', ' ').toLowerCase()}</p>
+                {refund.failureReason && <p className="mt-1 text-xs text-destructive">{refund.failureReason}</p>}
+              </div>
+              <Badge variant={refund.refundStatus === 'completed' ? 'default' : refund.refundStatus === 'rejected' || refund.refundStatus === 'failed' ? 'destructive' : 'secondary'}>{refund.refundStatus.replaceAll('_', ' ')}</Badge>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyWorkspaceSection icon={ReceiptText} title="No refund requests yet" body="Request a refund from a paid consultation under Consultations." action="Go to consultations" to="/workspace/consultations" />
+      )}
+    </div>
+  )
+}
+
 function UnconnectedSection({ title, service, icon: Icon }: { title: string; service: string; icon: React.ComponentType<{ className?: string }> }) {
   return <div><h1 className="font-heading text-3xl font-semibold">{title}</h1><div className="mt-7 border-y py-12 text-center"><Icon className="mx-auto size-8 text-primary" /><h2 className="mt-4 font-heading text-xl font-semibold">Not connected yet</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">{service} is not wired into this frontend. This is an unavailable feature state, not an empty account result.</p></div></div>
 }
@@ -97,8 +303,9 @@ function SectionForPath() {
   if (pathname === '/workspace/cases') return <UnconnectedSection icon={FolderOpen} title="My matters" service="Matter folders" />
   if (pathname === '/workspace/consultations') return <ConsultationsSection />
   if (pathname === '/workspace/saved') return <SavedLawyersSection />
-  if (pathname === '/workspace/messages') return <UnconnectedSection icon={MessageSquare} title="Messages" service="Client chat" />
-  if (pathname === '/workspace/settings') return <div><h1 className="font-heading text-3xl font-semibold">Account settings</h1><p className="mt-2 text-muted-foreground">Profile and privacy controls will be available as the account service expands.</p><Card className="mt-7"><CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /> Privacy by default</CardTitle></CardHeader><CardContent className="space-y-3 text-sm leading-6 text-muted-foreground"><p>CaseJeeto separates public lawyer information from private client activity.</p><p>Chat, review submission, and refund controls are not yet connected in this frontend.</p></CardContent></Card></div>
+  if (pathname === '/workspace/messages') return <MessagesSection />
+  if (pathname === '/workspace/refunds') return <RefundsSection />
+  if (pathname === '/workspace/settings') return <div><h1 className="font-heading text-3xl font-semibold">Account settings</h1><p className="mt-2 text-muted-foreground">Profile and privacy controls will be available as the account service expands.</p><Card className="mt-7"><CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /> Privacy by default</CardTitle></CardHeader><CardContent className="space-y-3 text-sm leading-6 text-muted-foreground"><p>CaseJeeto separates public lawyer information from private client activity.</p><p>Profile editing controls are not yet connected in this frontend.</p></CardContent></Card></div>
   if (pathname === '/workspace') return <Overview />
   return <UnconnectedSection icon={ShieldCheck} title="Workspace page not found" service="This nested workspace route" />
 }
