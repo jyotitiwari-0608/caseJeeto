@@ -4,18 +4,30 @@
 // API directly, so swapping providers later means rewriting only this file.
 
 const axios = require('axios');
+const { MAX_CALL_MINUTES } = require('../../config/videoCallRules');
 
 const daily = axios.create({
   baseURL: 'https://api.daily.co/v1',
   headers: { Authorization: `Bearer ${process.env.DAILY_API_KEY}` },
 });
 
-// Creates a private, time-boxed room for one booking. `exp` (Unix seconds)
-// auto-expires the room shortly after the consultation should have ended,
-// so stale rooms don't accumulate on the Daily dashboard.
+// Small buffer added on top of the hard cap purely to absorb clock skew
+// between this server and Daily's, so a participant isn't disconnected a
+// few seconds before the UI's own countdown reaches zero. It does NOT
+// extend the call — the meeting token (see consultationController.js)
+// still expires at exactly scheduledAt + MAX_CALL_MINUTES, so a client
+// can't rely on this buffer for extra talk time.
+const CLOCK_SKEW_BUFFER_SECONDS = 30;
+
+// Creates a private, time-boxed room for one booking. The room's `exp`
+// is capped to MAX_CALL_MINUTES after the SCHEDULED start time — not the
+// booked/paid durationMinutes — so a video consultation can never run
+// longer than the 15-minute policy regardless of what slot length was
+// purchased. `eject_at_room_exp: true` means Daily force-ejects anyone
+// still connected the moment the room hits this expiry.
 exports.createRoom = async (booking) => {
   const scheduledAt = new Date(booking.scheduledAt);
-  const expiresAt = new Date(scheduledAt.getTime() + (booking.durationMinutes + 30) * 60 * 1000);
+  const expiresAt = new Date(scheduledAt.getTime() + MAX_CALL_MINUTES * 60 * 1000 + CLOCK_SKEW_BUFFER_SECONDS * 1000);
 
   const { data } = await daily.post('/rooms', {
     name: `booking-${booking._id}`,

@@ -5,9 +5,7 @@ const dailyProvider = require('../services/video/dailyProvider');
 const asyncHandler = require('../middleware/asyncHandler');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
-
-const EARLY_JOIN_MINUTES = 15;
-const POST_SESSION_GRACE_MINUTES = 30;
+const { MAX_CALL_MINUTES, EARLY_JOIN_MINUTES } = require('../config/videoCallRules');
 
 // GET /api/bookings/:id/video-token  (client)
 // GET /api/lawyers/me/bookings/:id/video-token  (lawyer)
@@ -28,12 +26,15 @@ exports.getVideoToken = asyncHandler(async (req, res) => {
     throw new AppError(`Video access is only available for confirmed bookings (currently '${booking.status}').`, 400);
   }
 
+  // NOTE: the access/token window below is capped to MAX_CALL_MINUTES
+  // (15 min) after the scheduled start — deliberately NOT
+  // booking.durationMinutes, which only reflects the slot length the
+  // client selected and paid for. A video consultation is never allowed
+  // to run longer than the 15-minute policy regardless of the booked
+  // length. See config/videoCallRules.js for why this lives in one place.
   const scheduledAt = new Date(booking.scheduledAt);
-  const durationMs = booking.durationMinutes * 60 * 1000;
   const opensAt = new Date(scheduledAt.getTime() - EARLY_JOIN_MINUTES * 60 * 1000);
-  const closesAt = new Date(
-    scheduledAt.getTime() + durationMs + POST_SESSION_GRACE_MINUTES * 60 * 1000
-  );
+  const closesAt = new Date(scheduledAt.getTime() + MAX_CALL_MINUTES * 60 * 1000);
   const now = new Date();
   if (now < opensAt) {
     throw new AppError(
@@ -79,5 +80,6 @@ exports.getVideoToken = asyncHandler(async (req, res) => {
     roomUrl: booking.dailyRoomUrl,
     token,
     accessClosesAt: closesAt,
+    maxCallMinutes: MAX_CALL_MINUTES,
   });
 });
