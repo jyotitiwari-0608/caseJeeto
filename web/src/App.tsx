@@ -94,6 +94,14 @@ function AppRoutes() {
           )}
         />
         <Route
+          path="/lawyer/profile"
+          element={(
+            <ProtectedRoute role="lawyer">
+              <LawyerOnboardingPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
           path="/lawyer/dashboard/*"
           element={(
             <ProtectedRoute role="lawyer">

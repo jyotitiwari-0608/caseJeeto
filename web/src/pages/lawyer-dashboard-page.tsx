@@ -16,7 +16,7 @@ import { ErrorState } from '@/components/page-state'
 import { useAuth } from '@/contexts/auth-context'
 import { ApiError, api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { privateQueryKey } from '@/lib/session'
+import { advocateFirstName, privateQueryKey } from '@/lib/session'
 
 const links: DashboardLink[] = [
   { label: 'Overview', to: '/lawyer/dashboard', icon: LayoutDashboard },
@@ -24,12 +24,12 @@ const links: DashboardLink[] = [
   { label: 'Messages', to: '/lawyer/dashboard/messages', icon: MessageSquare },
   { label: 'Earnings', to: '/lawyer/dashboard/earnings', icon: WalletCards },
   { label: 'Reviews', to: '/lawyer/dashboard/reviews', icon: Star },
-  { label: 'Profile', to: '/lawyer/onboarding', icon: UserRound },
+  { label: 'Profile', to: '/lawyer/profile', icon: UserRound },
   { label: 'Settings', to: '/lawyer/dashboard/settings', icon: Settings },
 ]
 
 function UnconnectedLawyerSection({ title, body, icon: Icon }: { title: string; body: string; icon: React.ComponentType<{ className?: string }> }) {
-  return <div className="border-y py-14 text-center"><Icon className="mx-auto size-8 text-primary" /><h2 className="mt-4 font-heading text-2xl font-semibold">{title}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{body} This service is not connected in the current frontend, so this is not an empty-data result.</p><Link to="/lawyer/onboarding" className={cn(buttonVariants({ variant: 'outline' }), 'mt-6')}>Initial profile setup</Link></div>
+  return <div className="border-y py-14 text-center"><Icon className="mx-auto size-8 text-primary" /><h2 className="mt-4 font-heading text-2xl font-semibold">{title}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{body} This service is not connected in the current frontend, so this is not an empty-data result.</p><Link to="/lawyer/profile" className={cn(buttonVariants({ variant: 'outline' }), 'mt-6')}>Edit profile</Link></div>
 }
 
 function LawyerOverview() {
@@ -44,11 +44,11 @@ function LawyerOverview() {
   ]
   return (
     <>
-      <div className="flex flex-col gap-5 border-b pb-7 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold text-primary">Advocate desk</p><h1 className="mt-2 font-heading text-3xl font-semibold">Welcome, {user?.name.split(' ')[0]}.</h1><p className="mt-2 text-sm text-muted-foreground">A compact view of your visibility, client conversations, and practice activity.</p></div><Link to="/lawyer/onboarding" className={buttonVariants({ variant: 'outline' })}>Initial profile setup</Link></div>
+      <div className="flex flex-col gap-5 border-b pb-7 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold text-primary">Advocate desk</p><h1 className="mt-2 font-heading text-3xl font-semibold">Welcome, {advocateFirstName(user?.name || '')}.</h1><p className="mt-2 text-sm text-muted-foreground">A compact view of your visibility, client conversations, and practice activity.</p></div><Link to="/lawyer/profile" className={buttonVariants({ variant: 'outline' })}>Edit profile</Link></div>
       {query.isError && <Alert className="mt-6"><BadgeCheck /><AlertTitle>Live practice data is unavailable</AlertTitle><AlertDescription>Your workspace remains usable, but dashboard totals require the CaseJeeto API.</AlertDescription></Alert>}
       <div className="grid grid-cols-2 border-b py-7 xl:grid-cols-4">{stats.map(({ label, value, icon: Icon, note }, index) => <div key={label} className={cn('px-3 py-4 sm:px-5', index % 2 === 1 && 'border-l', index >= 2 && 'border-t xl:border-t-0', index > 0 && 'xl:border-l')}><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p><Icon className="size-4 text-primary" /></div>{query.isLoading ? <Skeleton className="mt-4 h-8 w-20" /> : <p className="mt-3 font-heading text-3xl font-semibold">{value}</p>}<p className="mt-1 text-xs text-muted-foreground">{note}</p></div>)}</div>
       <div className="grid gap-6 pt-7 lg:grid-cols-[1.15fr_.85fr]">
-        <Card><CardHeader><CardTitle>Practice readiness</CardTitle></CardHeader><CardContent className="space-y-5"><div className="flex items-start justify-between gap-4"><div><p className="font-medium">Verification</p><p className="mt-1 text-sm text-muted-foreground">Complete identity and professional checks before going live.</p></div><Badge variant={summary?.verificationStatus === 'approved' ? 'default' : 'secondary'}>{summary?.verificationStatus || 'Unavailable'}</Badge></div><div className="border-t pt-5"><p className="font-medium">Directory visibility</p><p className="mt-1 text-sm text-muted-foreground">{summary ? (summary.isProfileVisible ? 'Your approved profile is visible to prospective clients.' : 'Your profile is currently private while setup or verification is completed.') : 'Visibility could not be loaded from the API.'}</p></div><Link to="/lawyer/onboarding" className={cn(buttonVariants({ variant: 'outline' }), 'mt-2')}>Initial profile setup</Link></CardContent></Card>
+        <Card><CardHeader><CardTitle>Practice readiness</CardTitle></CardHeader><CardContent className="space-y-5"><div className="flex items-start justify-between gap-4"><div><p className="font-medium">Verification</p><p className="mt-1 text-sm text-muted-foreground">Complete identity and professional checks before going live.</p></div><Badge variant={summary?.verificationStatus === 'approved' ? 'default' : 'secondary'}>{summary?.verificationStatus || 'Unavailable'}</Badge></div><div className="border-t pt-5"><p className="font-medium">Directory visibility</p><p className="mt-1 text-sm text-muted-foreground">{summary ? (summary.isProfileVisible ? 'Your approved profile is visible to prospective clients.' : 'Your profile is currently private while setup or verification is completed.') : 'Visibility could not be loaded from the API.'}</p></div><Link to="/lawyer/profile" className={cn(buttonVariants({ variant: 'outline' }), 'mt-2')}>Edit profile</Link></CardContent></Card>
         <div className="border-y py-5"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Next consultation</p><CalendarDays className="mt-8 size-7 text-muted-foreground" /><p className="mt-4 font-medium">See the Consultations tab</p><p className="mt-1 text-sm leading-6 text-muted-foreground">Your upcoming bookings, with the ability to mark a consultation complete or cancel it, now live under Consultations in the sidebar.</p><Link to="/lawyer/dashboard/consultations" className={cn(buttonVariants({ variant: 'outline' }), 'mt-4')}>Open consultations</Link></div>
       </div>
     </>

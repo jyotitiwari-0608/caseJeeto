@@ -11,6 +11,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<AuthUser>
   register: (input: { name: string; email: string; phone: string; password: string; role: Exclude<UserRole, 'admin'> }) => Promise<AuthUser>
   logout: () => Promise<void>
+  isCurrentAccount: (expectedUserId: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -39,6 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuth(next)
     return next.user
   }, [queryClient, storage])
+
+  const isCurrentAccount = useCallback((expectedUserId: string) => {
+    const current = readStoredAuth(storage) || authRef.current
+    return current?.user.id === expectedUserId
+  }, [storage])
 
   const refreshAccessToken = useCallback(async (failedAccessToken: string | null) => {
     const current = readStoredAuth(storage) || authRef.current
@@ -92,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     user: auth?.user ?? null,
     accessToken: auth?.accessToken ?? null,
+    isCurrentAccount,
     async login(email, password) {
       const response = await api.login(email, password)
       return persist({ user: response.user, accessToken: response.accessToken, refreshToken: response.refreshToken })
@@ -110,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Local sign-out is authoritative when the API is unavailable.
       }
     },
-  }), [auth, clearLocalSession, persist])
+  }), [auth, clearLocalSession, isCurrentAccount, persist])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

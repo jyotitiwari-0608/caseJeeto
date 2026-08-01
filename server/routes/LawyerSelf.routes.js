@@ -3,10 +3,10 @@ const router = express.Router();
 const { verifyToken, requireRole } = require('../middleware/auth.middleware');
 const lawyerProfileController = require('../controllers/lawyerProfileController');
 
-router.use(verifyToken, requireRole('lawyer'));
+const lawyerOnly = [verifyToken, requireRole('lawyer')];
 
-router.get('/me', lawyerProfileController.getMyProfile);
-router.patch('/me', lawyerProfileController.updateMyProfile);
-router.patch('/me/visibility', lawyerProfileController.toggleVisibility);
+router.get('/me', ...lawyerOnly, lawyerProfileController.getMyProfile);
+router.patch('/me', ...lawyerOnly, lawyerProfileController.updateMyProfile);
+router.patch('/me/visibility', ...lawyerOnly, lawyerProfileController.toggleVisibility);
 
 module.exports = router;

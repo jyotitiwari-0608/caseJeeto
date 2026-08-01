@@ -1,19 +1,22 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, BriefcaseBusiness, Check, IndianRupee, Languages, MapPin, MessageCircle, MessageSquareText, Scale, ShieldCheck, Star } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, BriefcaseBusiness, Check, IndianRupee, Languages, MapPin, MessageCircle, MessageSquareText, Scale, ShieldCheck, Star } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { DemoDataNotice } from '@/components/demo-data-notice'
 import { LawyerBookingPanel } from '@/components/lawyer-booking-panel'
 import { ErrorState } from '@/components/page-state'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/auth-context'
 import { demoLawyers } from '@/data/lawyers'
-import { ApiError, DEMO_DATA_ENABLED, api } from '@/lib/api'
+import { ApiError, DEMO_DATA_ENABLED, api, deriveAuthoritativeClientLawyerState, shouldUseDemoFallback } from '@/lib/api'
+import { privateQueryKey } from '@/lib/session'
 import { cn } from '@/lib/utils'
+import type { SavedLawyersResponse } from '@/types/api'
 
 function DetailSkeleton() {
   return <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8"><Skeleton className="h-5 w-32" /><div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]"><div className="grid gap-6 sm:grid-cols-[17rem_1fr]"><Skeleton className="aspect-[4/5] rounded-2xl" /><div className="space-y-4"><Skeleton className="h-10 w-2/3" /><Skeleton className="h-5 w-1/2" /><Skeleton className="h-24 w-full" /></div></div><Skeleton className="h-96 rounded-2xl" /></div></div>
@@ -67,12 +70,55 @@ function ReviewsSection({ lawyerId, isDemo }: { lawyerId: string; isDemo: boolea
 
 export function LawyerDetailPage() {
   const { lawyerId = '' } = useParams()
-  const { user, accessToken } = useAuth()
+  const { user, accessToken, isCurrentAccount } = useAuth()
   const navigate = useNavigate()
   const [isStartingChat, setIsStartingChat] = useState(false)
+  const queryClient = useQueryClient()
   const demoLawyer = DEMO_DATA_ENABLED ? demoLawyers.find((item) => item._id === lawyerId) : undefined
-  const query = useQuery({ queryKey: ['lawyer', lawyerId, user?.id || 'guest'], queryFn: ({ signal }) => api.getLawyer(lawyerId, accessToken || undefined, signal), enabled: Boolean(lawyerId) && !demoLawyer, retry: false })
-  const lawyer = demoLawyer || query.data?.data.lawyer
+  const detailQueryKey = ['lawyer', lawyerId, user?.id || 'guest'] as const
+  const savedLawyersQueryKey = privateQueryKey('client-saved-lawyers', user?.id || 'guest')
+  const blockedLawyersQueryKey = privateQueryKey('client-blocked-lawyers', user?.id || 'guest')
+  const isClient = user?.role === 'client' && Boolean(accessToken)
+  const query = useQuery({ queryKey: detailQueryKey, queryFn: ({ signal }) => api.getLawyer(lawyerId, signal), enabled: Boolean(lawyerId), retry: false })
+  const savedLawyersQuery = useQuery({ queryKey: savedLawyersQueryKey, queryFn: ({ signal }) => api.getSavedLawyers(accessToken!, signal, { expectedUserId: user!.id, isCurrentAccount }), enabled: isClient, retry: false })
+  const blockedLawyersQuery = useQuery({ queryKey: blockedLawyersQueryKey, queryFn: ({ signal }) => api.getBlockedLawyers(accessToken!, signal, { expectedUserId: user!.id, isCurrentAccount }), enabled: isClient, retry: false })
+  const saveMutation = useMutation({
+    mutationFn: ({ nextSaved, expectedUserId, requestToken }: { nextSaved: boolean; expectedUserId: string; requestToken: string }) => {
+      const authScope = { expectedUserId, isCurrentAccount }
+      return nextSaved ? api.saveLawyer(lawyerId, requestToken, authScope) : api.unsaveLawyer(lawyerId, requestToken, authScope)
+    },
+    onSuccess: (_response, { nextSaved, expectedUserId }) => {
+      if (!isCurrentAccount(expectedUserId)) return
+      queryClient.setQueryData<SavedLawyersResponse>(savedLawyersQueryKey, (current) => current ? {
+        ...current,
+        data: {
+          savedLawyers: nextSaved
+            ? [...current.data.savedLawyers.filter((savedLawyer) => savedLawyer._id !== lawyerId), {
+                _id: lawyerId,
+                user: lawyer!.user,
+                specialization: lawyer!.specialization,
+                consultationFee: lawyer!.consultationFee,
+                rating: lawyer!.rating,
+                isAvailable: true,
+              }]
+            : current.data.savedLawyers.filter((savedLawyer) => savedLawyer._id !== lawyerId),
+        },
+      } : current)
+      void queryClient.invalidateQueries({ queryKey: savedLawyersQueryKey })
+      toast.success(nextSaved ? 'Advocate saved to your shortlist.' : 'Advocate removed from your shortlist.')
+    },
+  })
+  const usingDemo = Boolean(demoLawyer) && query.isError && shouldUseDemoFallback(query.error)
+  const lawyer = usingDemo ? demoLawyer : query.data?.data.lawyer
+  const { isSaved, isBlocked } = deriveAuthoritativeClientLawyerState(
+    lawyerId,
+    savedLawyersQuery.data?.data.savedLawyers,
+    blockedLawyersQuery.data?.data.blockedLawyers,
+  )
+  const isAccountStateLoading = isClient && (savedLawyersQuery.isPending || blockedLawyersQuery.isPending)
+  const isAccountStateError = savedLawyersQuery.isError || blockedLawyersQuery.isError
+  const mutationBelongsToCurrentAccount = saveMutation.variables?.expectedUserId === user?.id
+  const isSavePending = mutationBelongsToCurrentAccount && saveMutation.isPending
 
   if (query.isLoading) return <DetailSkeleton />
   if (!lawyer) return <div className="mx-auto max-w-3xl px-4 py-16"><ErrorState title={query.error instanceof ApiError && query.error.status === 404 ? 'Advocate profile not found' : 'Advocate profile unavailable'} message={query.error instanceof ApiError ? query.error.message : 'This profile could not be loaded from the live directory.'} onRetry={() => void query.refetch()} /></div>
@@ -95,7 +141,7 @@ export function LawyerDetailPage() {
       <section className="profile-hero border-b">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <Link to="/lawyers" className="pressable inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" aria-hidden="true" /> Back to all advocates</Link>
-          {demoLawyer && <div className="mt-4"><DemoDataNotice /></div>}
+          {usingDemo && <div className="mt-4"><DemoDataNotice /></div>}
 
           <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
             <div className="grid gap-14 pb-10 sm:pb-14">
@@ -157,13 +203,33 @@ export function LawyerDetailPage() {
                 <div className="grid gap-4 p-6 text-sm">
                   <p className="flex items-start gap-3"><Languages className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden="true" /><span><strong className="block text-primary">Languages</strong><span className="text-muted-foreground">{lawyer.languages.slice(0, 3).join(', ')}</span></span></p>
                   <p className="flex items-start gap-3"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden="true" /><span><strong className="block text-primary">Private account flow</strong><span className="text-muted-foreground">Sign-in is required before booking actions.</span></span></p>
-
                   {demoLawyer ? (
                     <p className="rounded-xl border bg-muted/40 p-4 text-center text-sm text-muted-foreground">Live availability is shown only for real profiles from the CaseJeeto API, not for this demo record.</p>
                   ) : (
                     <LawyerBookingPanel lawyer={lawyer} />
                   )}
-
+                  {user?.role === 'client' ? (
+                    <>
+                      <Button
+                        type="button"
+                        size="lg"
+                        variant={isSaved ? 'secondary' : 'outline'}
+                        className="h-11 w-full"
+                        aria-pressed={isSaved}
+                        aria-label={isSaved ? `Remove ${lawyer.user.name} from saved lawyers` : `Save ${lawyer.user.name} to saved lawyers`}
+                        disabled={isSavePending || isBlocked || isAccountStateLoading || isAccountStateError}
+                        onClick={() => accessToken && user && saveMutation.mutate({ nextSaved: !isSaved, expectedUserId: user.id, requestToken: accessToken })}
+                      >
+                        {isSaved ? <BookmarkCheck aria-hidden="true" /> : <Bookmark aria-hidden="true" />}
+                        {isAccountStateLoading ? 'Loading shortlist…' : isSavePending ? (isSaved ? 'Removing…' : 'Saving…') : isSaved ? 'Saved to shortlist' : 'Save to shortlist'}
+                      </Button>
+                      {isBlocked && <p className="text-center text-xs leading-5 text-muted-foreground">Unblock this advocate before saving the profile.</p>}
+                      {isAccountStateError && <Alert variant="destructive"><Bookmark aria-hidden="true" /><AlertTitle>Shortlist status unavailable</AlertTitle><AlertDescription>We could not verify your saved and blocked advocates. Try again before updating your shortlist.</AlertDescription><Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => { void savedLawyersQuery.refetch(); void blockedLawyersQuery.refetch() }}>Try again</Button></Alert>}
+                      {mutationBelongsToCurrentAccount && saveMutation.isError && saveMutation.error instanceof ApiError && saveMutation.error.kind !== 'superseded' && <Alert variant="destructive"><Bookmark aria-hidden="true" /><AlertTitle>Shortlist not updated</AlertTitle><AlertDescription>{saveMutation.error.message}</AlertDescription></Alert>}
+                    </>
+                  ) : !user ? (
+                    <Link to="/login" state={{ from: `/lawyers/${lawyerId}` }} className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'h-11 w-full')} aria-label={`Log in to save ${lawyer.user.name}`}><Bookmark aria-hidden="true" /> Log in to save</Link>
+                  ) : null}
                   <Link to="/lawyers" className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'h-11 w-full')}>Compare other advocates</Link>
                 </div>
               </div>
