@@ -182,7 +182,7 @@ This is an overview, not a replacement for an OpenAPI specification. Principal r
 | Route group | Examples | Intended capability |
 | --- | --- | --- |
 | `/api/auth` | `POST /register`, `/login`, `/refresh-token`, `/logout` | Registration and token/session lifecycle. |
-| `/api/lawyers` | `GET /`, `GET /:id`, `GET/PATCH /me` | Public lawyer discovery plus lawyer profile management. |
+| `/api/lawyers` | `GET /`, `GET /rankings`, `GET /:id`, `GET/PATCH /me` | Public lawyer discovery, a rating/case-volume leaderboard, plus lawyer profile management. |
 | `/api/clients` | `GET/PATCH /me`, saved/blocked lawyer routes | Client profile and private shortlist controls. |
 | `/api/lawyers/me/availability` | `POST /`, `GET /`, slot `PATCH`/`DELETE` | Lawyer-controlled, non-overlapping future availability slots. |
 | `/api/bookings` | `POST /`, list/detail, cancel | Transactional client booking and cancellation. |

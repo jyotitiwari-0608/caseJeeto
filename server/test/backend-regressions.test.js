@@ -444,6 +444,74 @@ test('authenticated lawyer search excludes the client blocked list', async () =>
   }
 });
 
+test('lawyer rankings only rank approved visible lawyers with stable scores', async () => {
+  const Lawyer = require('../models/lawyer');
+  const publicLawyerController = require('../controllers/publicLawyerController');
+  const originalAggregate = Lawyer.aggregate;
+  const matches = [];
+  const user1 = new mongoose.Types.ObjectId();
+  const user2 = new mongoose.Types.ObjectId();
+
+  Lawyer.aggregate = async (pipeline) => {
+    const first = pipeline[0];
+    if (first.$match) matches.push(first.$match);
+    if (pipeline.some((stage) => stage.$count)) return [{ total: 2 }];
+    if (pipeline.some((stage) => stage.$group)) return [{ _id: null, min: 10, max: 500 }];
+    return [
+      {
+        _id: new mongoose.Types.ObjectId(),
+        user: { _id: user1, name: 'Adv. Meera Sethi' },
+        specialization: ['Family Law'],
+        yearsOfExperience: 12,
+        courtsPracticed: ['Delhi High Court'],
+        languages: ['English', 'Hindi'],
+        consultationFee: 1800,
+        rating: 4.9,
+        reviewCount: 126,
+        totalConsultations: 500,
+        score: 92.3,
+      },
+      {
+        _id: new mongoose.Types.ObjectId(),
+        user: { _id: user2, name: 'Adv. Kabir Anand' },
+        specialization: ['Property Law'],
+        yearsOfExperience: 17,
+        courtsPracticed: ['District Courts'],
+        languages: ['English'],
+        consultationFee: 2000,
+        rating: 4.7,
+        reviewCount: 143,
+        totalConsultations: 400,
+        score: 80.1,
+      },
+    ];
+  };
+
+  try {
+    let captured;
+    await new Promise((resolve, reject) => {
+      publicLawyerController.getLawyerRankings(
+        { query: {} },
+        { status() { return this; }, json(body) { captured = body; resolve(); } },
+        reject
+      );
+    });
+    assert.equal(captured.success, true);
+    assert.equal(captured.data.rankings.length, 2);
+    assert.equal(captured.data.rankings[0].rank, 1);
+    assert.equal(captured.data.rankings[0].score, 92.3);
+    assert.equal(captured.data.rankings[1].rank, 2);
+    assert.equal(String(captured.data.rankings[0].lawyer.user._id), String(user1));
+    assert.equal(captured.meta.total, 2);
+    matches.forEach((match) => {
+      assert.equal(match.isProfileVisible, true);
+      assert.equal(match.verificationStatus, 'approved');
+    });
+  } finally {
+    Lawyer.aggregate = originalAggregate;
+  }
+});
+
 test('video tokens are rejected before the consultation join window', async () => {
   const Booking = require('../models/booking');
   const consultationController = require('../controllers/consultationController');
