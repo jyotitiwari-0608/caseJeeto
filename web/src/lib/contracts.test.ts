@@ -8,6 +8,7 @@ import {
   parseBookingsResponse,
   parseLawyerDashboardSummary,
   parseLawyerResponse,
+  parseLawyerRankingsResponse,
   parseLawyersResponse,
   parseSavedLawyersResponse,
   shouldUseDemoFallback,
@@ -286,4 +287,46 @@ test('malformed dashboard contracts are rejected before numeric rendering', () =
     unreadMessages: 3,
     isProfileVisible: true,
   }), 'lawyer dashboard')
+})
+
+test('malformed lawyer ranking contracts are rejected before the leaderboard renders', () => {
+  assertInvalidContract(() => parseLawyerRankingsResponse({
+    success: true,
+    data: {
+      rankings: [{
+        rank: 1,
+        score: 87.4,
+        lawyer: { ...validLawyer, rating: '4.8' },
+      }],
+    },
+    meta: validMeta,
+  }), 'lawyer rankings')
+
+  assertInvalidContract(() => parseLawyerRankingsResponse({
+    success: true,
+    data: {
+      rankings: [{
+        rank: 0,
+        score: 87.4,
+        lawyer: validLawyer,
+      }],
+    },
+    meta: validMeta,
+  }), 'lawyer rankings')
+})
+
+test('well-formed lawyer ranking contracts are accepted', () => {
+  const parsed = parseLawyerRankingsResponse({
+    success: true,
+    data: {
+      rankings: [{
+        rank: 1,
+        score: 87.4,
+        lawyer: validLawyer,
+      }],
+    },
+    meta: validMeta,
+  })
+  assert.equal(parsed.data.rankings[0].rank, 1)
+  assert.equal(parsed.data.rankings[0].score, 87.4)
 })

@@ -9,6 +9,7 @@ import {
   FileSearch,
   MessageSquareText,
   ShieldCheck,
+  Trophy,
   UserRoundSearch,
   UsersRound,
 } from 'lucide-react'
@@ -139,7 +140,11 @@ export function HomePage() {
               <h2 className="text-section-title mt-3 text-white">A shortlist that reads like a useful brief.</h2>
               <p className="mt-4 text-lg leading-7 text-white/65">Profile data is loaded from the CaseJeeto directory. Demo records appear only when development fallback is enabled.</p>
             </div>
-            <Link to="/lawyers" className={cn(buttonVariants({ variant: 'secondary', size: 'lg' }), 'h-11 shrink-0 border-white bg-white px-5 text-primary hover:bg-white/90')}>View all advocates <ArrowRight className="arrow-nudge" aria-hidden="true" /></Link>
+            <div className="flex flex-wrap gap-3">
+              <Link to="/rankings" className={cn(buttonVariants({ variant: 'secondary', size: 'lg' }), 'h-11 shrink-0 border-white bg-white px-5 text-primary hover:bg-white/90')}><Trophy className="size-4" aria-hidden="true" /> Top advocates <ArrowRight className="arrow-nudge" aria-hidden="true" /></Link>
+              <Link to="/lawyers" className={cn(buttonVariants({ variant: 'ghost', size: 'lg' }), 'h-11 shrink-0 px-5 text-white/85 hover:bg-white/10 hover:text-white')}>View all advocates</Link>
+            </div>
+
           </div>
 
           {usingFeaturedDemo && <p className="mt-8 rounded-lg border border-white/15 bg-white/6 px-4 py-3 text-sm text-white/70">Sample profiles follow. Their names, ratings, reviews, fees, and portraits are representative demo data shown because the API is unreachable.</p>}

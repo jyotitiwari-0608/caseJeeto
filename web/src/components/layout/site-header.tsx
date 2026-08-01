@@ -10,6 +10,7 @@ import { isUnmodifiedPrimaryActivation, scrollRepeatedHashDestination } from '@/
 
 const publicLinks = [
   { label: 'Find a lawyer', to: '/lawyers' },
+  { label: 'Rankings', to: '/rankings' },
   { label: 'How it works', to: '/#how-it-works', section: true },
   { label: 'For advocates', to: '/register?role=lawyer' },
 ]

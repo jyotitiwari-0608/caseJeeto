@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, setAuthRefreshHandler, setUnauthorizedHandler } from '@/lib/api'
+import { closeSocket } from '@/lib/socket'
 import { AUTH_STORAGE_KEY, clearSession, commitRotatedSession, getBrowserStorage, readStoredAuth, writeStoredAuth, type StoredAuth } from '@/lib/session'
 import type { AuthUser, UserRole } from '@/types/api'
 
@@ -22,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const sessionGenerationRef = useRef(0)
 
   const clearLocalSession = useCallback(() => {
+    closeSocket()
     clearSession(storage, queryClient)
     sessionGenerationRef.current += 1
     authRef.current = null
@@ -29,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient, storage])
 
   const persist = useCallback((next: StoredAuth) => {
+    closeSocket()
     queryClient.clear()
     sessionGenerationRef.current += 1
     writeStoredAuth(storage, next)
