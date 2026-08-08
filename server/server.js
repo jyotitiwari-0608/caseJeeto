@@ -99,6 +99,7 @@ const PORT = process.env.PORT || 5000;
 mongoose
   .connect(process.env.MONGO_URI, { autoIndex: process.env.NODE_ENV !== 'production' })
   .then(() => {
+    console.log('connected to MongoDB');
     server.listen(PORT, () => console.log(`CaseLeeto server running on port ${PORT}`));
   })
   .catch((err) => {
