@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { VerifiedBadge } from '@/components/verified-badge'
 import { useAuth } from '@/contexts/auth-context'
 import { ApiError, api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -176,7 +177,7 @@ function SavedLawyersSection() {
   if (query.isLoading) return <div><h1 className="font-heading text-3xl font-semibold">Saved lawyers</h1><Skeleton className="mt-7 h-40 w-full" /></div>
   if (query.isError) return <ErrorState title="Saved lawyers unavailable" message="We could not load your private shortlist from the CaseJeeto API." onRetry={() => void query.refetch()} />
   const lawyers = query.data?.data.savedLawyers || []
-  return <div><h1 className="font-heading text-3xl font-semibold">Saved lawyers</h1><p className="mt-2 text-muted-foreground">Your private shortlist, loaded from your client account.</p>{lawyers.length > 0 ? <div className="mt-7 divide-y border-y">{lawyers.map((lawyer) => <article key={lawyer._id} className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><h2 className="font-heading text-lg font-semibold">{lawyer.user.name}</h2>{!lawyer.isAvailable && <Badge variant="secondary">Currently unavailable</Badge>}</div><p className="mt-1 text-sm text-muted-foreground">{lawyer.specialization.join(', ') || 'Practice areas not listed'}</p></div><div className="flex items-center gap-4"><span className="flex items-center gap-1 text-sm"><Star className="size-4 text-primary" /> {lawyer.rating.toFixed(1)}</span><span className="text-sm font-medium">₹{lawyer.consultationFee.toLocaleString('en-IN')}</span><Link to={`/lawyers/${lawyer._id}`} className={buttonVariants({ variant: 'outline' })}>View</Link></div></article>)}</div> : <EmptyWorkspaceSection icon={Bookmark} title="Build a thoughtful shortlist" body="No lawyers are saved for this account yet." action="Start comparing" to="/lawyers" />}</div>
+  return <div><h1 className="font-heading text-3xl font-semibold">Saved lawyers</h1><p className="mt-2 text-muted-foreground">Your private shortlist, loaded from your client account.</p>{lawyers.length > 0 ? <div className="mt-7 divide-y border-y">{lawyers.map((lawyer) => <article key={lawyer._id} className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-heading text-lg font-semibold">{lawyer.user.name}</h2><VerifiedBadge />{!lawyer.isAvailable && <Badge variant="secondary">Currently unavailable</Badge>}</div><p className="mt-1 text-sm text-muted-foreground">{lawyer.specialization.join(', ') || 'Practice areas not listed'}</p></div><div className="flex items-center gap-4"><span className="flex items-center gap-1 text-sm"><Star className="size-4 text-primary" /> {lawyer.rating.toFixed(1)}</span><span className="text-sm font-medium">₹{lawyer.consultationFee.toLocaleString('en-IN')}</span><Link to={`/lawyers/${lawyer._id}`} className={buttonVariants({ variant: 'outline' })}>View</Link></div></article>)}</div> : <EmptyWorkspaceSection icon={Bookmark} title="Build a thoughtful shortlist" body="No lawyers are saved for this account yet." action="Start comparing" to="/lawyers" />}</div>
 }
 
 function MessagesSection() {
@@ -294,18 +295,51 @@ function RefundsSection() {
   )
 }
 
+function MattersSection() {
+  return (
+    <div>
+      <h1 className="font-heading text-3xl font-semibold">My matters</h1>
+      <p className="mt-2 text-muted-foreground">Keep every legal concern and its documents in one organised place.</p>
+      <div className="mt-7 overflow-hidden rounded-2xl border bg-card">
+        <div className="grid gap-6 p-6 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-10 sm:p-8">
+          <div className="max-w-xl">
+            <p className="eyebrow">Coming soon</p>
+            <h2 className="mt-2 font-heading text-2xl font-semibold tracking-[-0.02em] text-primary">Matter folders are on the way.</h2>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">You will be able to group documents, timelines, and notes for each legal matter — so your next conversation with an advocate starts with everything in front of you. Until then, the essentials below already work.</p>
+          </div>
+          <FolderOpen className="size-16 shrink-0 text-primary/20" aria-hidden="true" />
+        </div>
+        <div className="grid gap-px border-t bg-border sm:grid-cols-3">
+          {[
+            { icon: Search, title: 'Find an advocate', body: 'Shortlist verified profiles that match your matter.', to: '/lawyers', action: 'Browse advocates' },
+            { icon: CalendarDays, title: 'Request a consultation', body: 'Reserve a slot and pay securely from your workspace.', to: '/workspace/consultations', action: 'View consultations' },
+            { icon: MessageSquare, title: 'Prepare the conversation', body: 'Message an advocate and ask questions before you meet.', to: '/workspace/messages', action: 'Open messages' },
+          ].map(({ icon: Icon, title, body, to, action }) => (
+            <div key={title} className="flex flex-col bg-card p-6">
+              <span className="grid size-10 place-items-center rounded-lg bg-primary/7 text-primary"><Icon className="size-5" aria-hidden="true" /></span>
+              <h3 className="mt-4 font-semibold text-primary">{title}</h3>
+              <p className="mt-1 flex-1 text-sm leading-6 text-muted-foreground">{body}</p>
+              <Link to={to} className={cn(buttonVariants({ variant: 'outline' }), 'mt-5 h-10 gap-2 self-start')}>{action} <ArrowRight className="arrow-nudge" aria-hidden="true" /></Link>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function UnconnectedSection({ title, service, icon: Icon }: { title: string; service: string; icon: React.ComponentType<{ className?: string }> }) {
   return <div><h1 className="font-heading text-3xl font-semibold">{title}</h1><div className="mt-7 border-y py-12 text-center"><Icon className="mx-auto size-8 text-primary" /><h2 className="mt-4 font-heading text-xl font-semibold">Not connected yet</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">{service} is not wired into this frontend. This is an unavailable feature state, not an empty account result.</p></div></div>
 }
 
 function SectionForPath() {
   const { pathname } = useLocation()
-  if (pathname === '/workspace/cases') return <UnconnectedSection icon={FolderOpen} title="My matters" service="Matter folders" />
+  if (pathname === '/workspace/cases') return <MattersSection />
   if (pathname === '/workspace/consultations') return <ConsultationsSection />
   if (pathname === '/workspace/saved') return <SavedLawyersSection />
   if (pathname === '/workspace/messages') return <MessagesSection />
   if (pathname === '/workspace/refunds') return <RefundsSection />
-  if (pathname === '/workspace/settings') return <div><h1 className="font-heading text-3xl font-semibold">Account settings</h1><p className="mt-2 text-muted-foreground">Profile and privacy controls will be available as the account service expands.</p><Card className="mt-7"><CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /> Privacy by default</CardTitle></CardHeader><CardContent className="space-y-3 text-sm leading-6 text-muted-foreground"><p>CaseJeeto separates public lawyer information from private client activity.</p><p>Profile editing controls are not yet connected in this frontend.</p></CardContent></Card></div>
+  if (pathname === '/workspace/settings') return <div><h1 className="font-heading text-3xl font-semibold">Account settings</h1><p className="mt-2 text-muted-foreground">Profile and privacy controls, coming to this workspace.</p><Card className="mt-7"><CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /> Privacy by default</CardTitle></CardHeader><CardContent className="space-y-3 text-sm leading-6 text-muted-foreground"><p>CaseJeeto separates public lawyer information from private client activity. Only you can see your matters, bookings, messages, and saved shortlist.</p><p>Profile editing and notification preferences will appear here as the account service expands. Everything you need today is under the other tabs.</p></CardContent></Card></div>
   if (pathname === '/workspace') return <Overview />
   return <UnconnectedSection icon={ShieldCheck} title="Workspace page not found" service="This nested workspace route" />
 }

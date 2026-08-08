@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { VerifiedBadge } from '@/components/verified-badge'
 import { demoLawyers, practiceAreas } from '@/data/lawyers'
 import { ApiError, api, shouldUseDemoFallback } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -66,7 +67,8 @@ function PodiumCard({ ranking, highlight }: { ranking: LawyerRanking; highlight:
         <AvatarFallback className="rounded-2xl bg-secondary font-heading text-lg text-primary">{initials(lawyer.user.name)}</AvatarFallback>
       </Avatar>
       <h3 className="mt-3 truncate text-base font-semibold tracking-[-0.02em] text-primary">{lawyer.user.name}</h3>
-      <p className="mt-1 text-xs text-muted-foreground">{lawyer.specialization[0]}</p>
+      <VerifiedBadge className="mt-2" />
+      <p className="mt-2 text-xs text-muted-foreground">{lawyer.specialization[0]}</p>
       <dl className="mt-4 grid w-full grid-cols-2 gap-2 text-xs">
         <div className="rounded-lg bg-muted px-2 py-2">
           <dt className="flex items-center justify-center gap-1 text-muted-foreground"><Star className="size-3 fill-current text-rating" aria-hidden="true" /> Rating</dt>
@@ -100,7 +102,7 @@ function RankingRow({ ranking }: { ranking: LawyerRanking }) {
           <AvatarFallback className="rounded-xl bg-secondary font-heading text-primary">{initials(lawyer.user.name)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0">
-          <h3 className="truncate font-semibold tracking-[-0.02em] text-primary">{lawyer.user.name}</h3>
+          <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 truncate font-semibold tracking-[-0.02em] text-primary"><span className="truncate">{lawyer.user.name}</span><VerifiedBadge /></h3>
           <p className="mt-1 truncate text-sm text-muted-foreground">{lawyer.specialization.slice(0, 2).join(' · ') || 'General practice'}</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Star className="size-3 fill-current text-rating" aria-hidden="true" /> {lawyer.rating.toFixed(1)} <span className="text-muted-foreground/70">({lawyer.reviewCount})</span></span>
