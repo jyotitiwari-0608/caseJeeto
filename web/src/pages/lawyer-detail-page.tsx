@@ -6,12 +6,15 @@ import { toast } from 'sonner'
 import { DemoDataNotice } from '@/components/demo-data-notice'
 import { LawyerBookingPanel } from '@/components/lawyer-booking-panel'
 import { ErrorState } from '@/components/page-state'
+import { ReviewSnippet } from '@/components/review-snippet'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { VerifiedBadge } from '@/components/verified-badge'
 import { useAuth } from '@/contexts/auth-context'
+import { useCompare } from '@/contexts/compare-context'
 import { demoLawyers } from '@/data/lawyers'
 import { ApiError, DEMO_DATA_ENABLED, api, deriveAuthoritativeClientLawyerState, shouldUseDemoFallback } from '@/lib/api'
 import { privateQueryKey } from '@/lib/session'
@@ -74,6 +77,7 @@ export function LawyerDetailPage() {
   const navigate = useNavigate()
   const [isStartingChat, setIsStartingChat] = useState(false)
   const queryClient = useQueryClient()
+  const { isSelected: isCompared, toggle: toggleCompare } = useCompare()
   const demoLawyer = DEMO_DATA_ENABLED ? demoLawyers.find((item) => item._id === lawyerId) : undefined
   const detailQueryKey = ['lawyer', lawyerId, user?.id || 'guest'] as const
   const savedLawyersQueryKey = privateQueryKey('client-saved-lawyers', user?.id || 'guest')
@@ -153,7 +157,10 @@ export function LawyerDetailPage() {
 
                 <div className="flex flex-col justify-center py-2">
                   <p className="eyebrow">Advocate profile</p>
-                  <h1 className="mt-3 text-4xl font-semibold tracking-[-0.045em] text-primary sm:text-5xl">{lawyer.user.name}</h1>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <h1 className="text-4xl font-semibold tracking-[-0.045em] text-primary sm:text-5xl">{lawyer.user.name}</h1>
+                    <VerifiedBadge />
+                  </div>
                   <p className="mt-3 flex items-center gap-2 text-muted-foreground"><MapPin className="size-4" aria-hidden="true" /> {lawyer.officeAddress || 'India'}</p>
                   <div className="mt-5 flex flex-wrap gap-2">{lawyer.specialization.map((area, index) => <Badge key={area} variant={index === 0 ? 'default' : 'secondary'}>{area}</Badge>)}</div>
                   <p className="mt-6 max-w-2xl text-base leading-7 text-muted-foreground">{lawyer.bio || 'This advocate offers thoughtful, confidential guidance and practical next steps for clients.'}</p>
@@ -164,6 +171,8 @@ export function LawyerDetailPage() {
                     <div className="bg-card p-4"><dt className="flex items-center gap-1.5 text-xs text-muted-foreground"><MessageSquareText className="size-3.5" aria-hidden="true" /> Reviews</dt><dd className="mt-1 text-lg font-semibold text-primary">{lawyer.reviewCount}</dd></div>
                     <div className="bg-card p-4"><dt className="flex items-center gap-1.5 text-xs text-muted-foreground"><Scale className="size-3.5" aria-hidden="true" /> Consultations</dt><dd className="mt-1 text-lg font-semibold text-primary">{lawyer.totalConsultations}</dd></div>
                   </dl>
+
+                  {!demoLawyer && <ReviewSnippet lawyerId={lawyer._id} />}
 
                   {user?.role === 'client' && !demoLawyer && (
                     <Button variant="outline" className="mt-6 w-fit gap-2" onClick={() => void startConversation()} disabled={isStartingChat}>
@@ -202,11 +211,17 @@ export function LawyerDetailPage() {
                 </div>
                 <div className="grid gap-4 p-6 text-sm">
                   <p className="flex items-start gap-3"><Languages className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden="true" /><span><strong className="block text-primary">Languages</strong><span className="text-muted-foreground">{lawyer.languages.slice(0, 3).join(', ')}</span></span></p>
-                  <p className="flex items-start gap-3"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden="true" /><span><strong className="block text-primary">Private account flow</strong><span className="text-muted-foreground">Sign-in is required before booking actions.</span></span></p>
+                  <p className="flex items-start gap-3"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden="true" /><span><strong className="block text-primary">Private account flow</strong><span className="text-muted-foreground">Slots are public, but an account is required to request or pay for a consultation.</span></span></p>
                   {demoLawyer ? (
                     <p className="rounded-xl border bg-muted/40 p-4 text-center text-sm text-muted-foreground">Live availability is shown only for real profiles from the CaseJeeto API, not for this demo record.</p>
                   ) : (
-                    <LawyerBookingPanel lawyer={lawyer} />
+                    <>
+                      <LawyerBookingPanel lawyer={lawyer} />
+                      <p className="flex items-start gap-2.5 rounded-xl border border-mint-strong/30 bg-mint p-3.5 text-xs leading-5 text-mint-strong">
+                        <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                        <span>Your payment is processed securely through Razorpay. You can request a refund for qualifying cancellations from your workspace after paying.</span>
+                      </p>
+                    </>
                   )}
                   {user?.role === 'client' ? (
                     <>
@@ -230,6 +245,17 @@ export function LawyerDetailPage() {
                   ) : !user ? (
                     <Link to="/login" state={{ from: `/lawyers/${lawyerId}` }} className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'h-11 w-full')} aria-label={`Log in to save ${lawyer.user.name}`}><Bookmark aria-hidden="true" /> Log in to save</Link>
                   ) : null}
+                  <Button
+                    type="button"
+                    size="lg"
+                    variant={isCompared(lawyer._id) ? 'secondary' : 'outline'}
+                    className="h-11 w-full gap-2"
+                    aria-pressed={isCompared(lawyer._id)}
+                    onClick={() => toggleCompare(lawyer)}
+                  >
+                    <Scale aria-hidden="true" />
+                    {isCompared(lawyer._id) ? 'In comparison — remove' : 'Add to comparison'}
+                  </Button>
                   <Link to="/lawyers" className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'h-11 w-full')}>Compare other advocates</Link>
                 </div>
               </div>
