@@ -36,3 +36,11 @@ Thumbs.db
 coverage/
 *.pem
 .gstack/
+
+# internship material (personal notes, not part of the project)
+internship/
+internship.txt
+internshipPrep.txt
+
+# scratch / note text files (design docs, pipelines, -v2 archives)
+*.txt
