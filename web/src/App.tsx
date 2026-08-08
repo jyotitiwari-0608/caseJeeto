@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from '@/components/ui/sonner'
 import { AuthProvider, useAuth } from '@/contexts/auth-context'
+import { CompareProvider } from '@/contexts/compare-context'
+import { CompareTray } from '@/components/compare-tray'
 import { SiteLayout } from '@/components/layout/site-layout'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { UserRole } from '@/types/api'
@@ -128,7 +130,10 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <AppRoutes />
+        <CompareProvider>
+          <AppRoutes />
+          <CompareTray />
+        </CompareProvider>
         <Toaster position="top-center" richColors />
       </AuthProvider>
     </QueryClientProvider>
