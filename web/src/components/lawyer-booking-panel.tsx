@@ -44,7 +44,6 @@ export function LawyerBookingPanel({ lawyer }: { lawyer: Lawyer }) {
   const query = useQuery({
     queryKey: ['lawyer-availability', lawyer._id],
     queryFn: ({ signal }) => api.getLawyerAvailability(lawyer._id, {}, signal),
-    enabled: isClient,
     retry: false,
   })
 
@@ -67,25 +66,6 @@ export function LawyerBookingPanel({ lawyer }: { lawyer: Lawyer }) {
       setSelected(null)
     },
   })
-
-  if (!user) {
-    return (
-      <div className="grid gap-3 rounded-xl border bg-secondary p-5 text-center">
-        <p className="text-sm font-medium text-primary">Log in to see live availability and request a consultation.</p>
-        <Link to="/login" state={{ from: `/lawyers/${lawyer._id}` }} className={cn(buttonVariants(), 'gap-2')}>
-          <LogIn className="size-4" /> Log in to book
-        </Link>
-      </div>
-    )
-  }
-
-  if (!isClient) {
-    return (
-      <p className="rounded-xl border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
-        Only client accounts can request a consultation.
-      </p>
-    )
-  }
 
   if (query.isLoading) {
     return (
@@ -113,6 +93,11 @@ export function LawyerBookingPanel({ lawyer }: { lawyer: Lawyer }) {
     )
   }
 
+  function requestGuestSlot() {
+    if (user) return
+    navigate('/login', { state: { from: `/lawyers/${lawyer._id}` } })
+  }
+
   return (
     <div className="grid gap-4">
       <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
@@ -123,20 +108,43 @@ export function LawyerBookingPanel({ lawyer }: { lawyer: Lawyer }) {
           <div key={day.availabilityId}>
             <p className="text-xs font-semibold text-muted-foreground">{formatDayLabel(day.date)}</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {day.slots.map((slot) => (
-                <button
-                  key={slot.slotId}
-                  type="button"
-                  onClick={() => setSelected({ availabilityId: day.availabilityId, slot })}
-                  className="rounded-lg border bg-card px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-primary hover:bg-primary/5"
-                >
-                  {formatSlotTime(slot.startTime, slot.endTime)}
-                </button>
-              ))}
+              {day.slots.map((slot) => {
+                const onSelect = isClient
+                  ? () => setSelected({ availabilityId: day.availabilityId, slot })
+                  : user
+                    ? undefined
+                    : requestGuestSlot
+                return (
+                  <button
+                    key={slot.slotId}
+                    type="button"
+                    onClick={onSelect}
+                    disabled={!isClient && Boolean(user)}
+                    className="rounded-lg border bg-card px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-current disabled:hover:bg-card"
+                  >
+                    {formatSlotTime(slot.startTime, slot.endTime)}
+                  </button>
+                )
+              })}
             </div>
           </div>
         ))}
       </div>
+
+      {!user && (
+        <div className="rounded-xl border bg-secondary p-4 text-center">
+          <p className="text-sm font-medium text-primary">Log in to request a slot</p>
+          <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-muted-foreground">Booking needs an account so you can track the request and pay for the consultation securely.</p>
+          <Link to="/login" state={{ from: `/lawyers/${lawyer._id}` }} className={cn(buttonVariants(), 'mt-3 gap-2')}>
+            <LogIn className="size-4" /> Log in to book
+          </Link>
+        </div>
+      )}
+      {user && !isClient && (
+        <p className="rounded-xl border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
+          Only client accounts can request a consultation.
+        </p>
+      )}
 
       <Dialog open={Boolean(selected) || Boolean(confirmedBookingId)} onOpenChange={(open) => { if (!open) { setSelected(null); setConfirmedBookingId(null) } }}>
         <DialogContent>
@@ -144,8 +152,20 @@ export function LawyerBookingPanel({ lawyer }: { lawyer: Lawyer }) {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="size-5 text-mint-strong" /> Consultation requested</DialogTitle>
-                <DialogDescription>Your booking is pending until payment is completed. You can pay from your workspace.</DialogDescription>
+                <DialogDescription>Your slot is reserved as pending. Here is what happens next.</DialogDescription>
               </DialogHeader>
+              <div className="grid gap-3 rounded-lg border bg-muted/40 p-4">
+                {[
+                  ['1', 'Pay the consultation fee', 'Open your Consultations page and pay to confirm this slot.'],
+                  ['2', 'Get ready', 'Add any documents and questions to make the call more useful.'],
+                  ['3', 'Join the video call', 'A secure video link appears here once your booking is confirmed.'],
+                ].map(([step, title, body]) => (
+                  <div key={step} className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3">
+                    <span className="grid size-7 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{step}</span>
+                    <div><p className="text-sm font-semibold text-primary">{title}</p><p className="text-xs leading-5 text-muted-foreground">{body}</p></div>
+                  </div>
+                ))}
+              </div>
               <DialogFooter>
                 <Button onClick={() => navigate('/workspace/consultations')}>View my consultations</Button>
               </DialogFooter>
