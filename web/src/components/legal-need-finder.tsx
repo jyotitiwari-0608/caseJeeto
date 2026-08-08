@@ -90,7 +90,7 @@ export function LegalNeedFinder({ className, initialSpecialization = 'Family Law
             {languages.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
-        <Button type="submit" size="lg" className="h-12 bg-seal px-5 text-seal-foreground hover:bg-seal/90">
+        <Button type="submit" size="lg" className="h-12 px-5">
           Show matching advocates <ArrowRight className="arrow-nudge" aria-hidden="true" />
         </Button>
       </div>

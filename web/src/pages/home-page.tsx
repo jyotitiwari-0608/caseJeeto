@@ -70,7 +70,7 @@ export function HomePage() {
                   : 'Compare relevant profile facts in one place, then decide who you want to speak with.'}
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link to={advocateAudience ? '/register?role=lawyer' : '/lawyers'} className={cn(buttonVariants({ size: 'lg' }), 'h-12 bg-seal px-6 text-seal-foreground hover:bg-seal/90')}>
+                <Link to={advocateAudience ? '/register?role=lawyer' : '/lawyers'} className={cn(buttonVariants({ size: 'lg' }), 'h-12 px-6')}>
                   {advocateAudience ? 'Build your advocate profile' : 'Explore advocates'} <ArrowRight className="arrow-nudge" aria-hidden="true" />
                 </Link>
                 <Link to={advocateAudience ? '/#how-it-works' : '/register'} className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'h-12 px-6')}>

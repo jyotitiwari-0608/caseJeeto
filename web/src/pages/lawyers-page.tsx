@@ -167,7 +167,7 @@ export function LawyersPage() {
           </div>
           <form onSubmit={submitSearch} className="mt-8 flex max-w-4xl flex-col gap-2 rounded-xl border bg-card p-2 shadow-[var(--shadow-small)] sm:flex-row" role="search">
             <div className="relative flex-1"><Search className="absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input className="h-12 border-0 bg-transparent pl-10 text-base shadow-none focus-visible:ring-0" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Advocate name or recognised practice area" aria-label="Search by advocate name or practice area" /></div>
-            <Button type="submit" size="lg" className="h-12 bg-seal px-6 text-seal-foreground hover:bg-seal/90">Search</Button>
+            <Button type="submit" size="lg" className="h-12 px-6">Search</Button>
             <Sheet>
               <SheetTrigger render={<Button type="button" variant="outline" size="lg" className="h-12 lg:hidden" />}><SlidersHorizontal aria-hidden="true" /> Filters</SheetTrigger>
               <SheetContent side="right"><SheetHeader><SheetTitle>Filter advocates</SheetTitle><SheetDescription>Choose the profile facts relevant to your matter.</SheetDescription></SheetHeader><div className="px-4 pb-6"><FilterPanel idPrefix="mobile" {...{ specialization, language, court, maxFee, minExperience, setParam, clear: clearFilters }} /></div></SheetContent>

@@ -9,7 +9,6 @@ import { accountDestination } from '@/lib/session'
 import { isUnmodifiedPrimaryActivation, scrollRepeatedHashDestination } from '@/lib/navigation'
 
 const publicLinks = [
-  { label: 'Find a lawyer', to: '/lawyers' },
   { label: 'Rankings', to: '/rankings' },
   { label: 'How it works', to: '/#how-it-works', section: true },
   { label: 'For advocates', to: '/register?role=lawyer' },
@@ -57,7 +56,7 @@ export function SiteHeader() {
           ) : (
             <>
               <Link to="/login" className={buttonVariants({ variant: 'ghost', size: 'lg' })}>Log in</Link>
-              <Link to="/register" className={cn(buttonVariants({ size: 'lg' }), 'h-10 bg-seal px-4 text-seal-foreground hover:bg-seal/90')}>Get legal help</Link>
+              <Link to="/lawyers" className={cn(buttonVariants({ size: 'lg' }), 'h-10 px-4')}>Find a lawyer</Link>
             </>
           )}
         </div>
@@ -85,7 +84,7 @@ export function SiteHeader() {
                 </>
               ) : (
                 <>
-                  <Link to="/register" onClick={() => setMobileOpen(false)} className={buttonVariants({ size: 'lg' })}>Get legal help</Link>
+                  <Link to="/lawyers" onClick={() => setMobileOpen(false)} className={buttonVariants({ size: 'lg' })}>Find a lawyer</Link>
                   <Link to="/login" onClick={() => setMobileOpen(false)} className={buttonVariants({ variant: 'outline', size: 'lg' })}>Log in</Link>
                 </>
               )}
