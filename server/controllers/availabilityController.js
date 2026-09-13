@@ -1,4 +1,12 @@
 // availabilityController.js
+/**PART 1
+What Availability actually represents
+
+PART 2
+User ID vs Lawyer ID
+
+PART 3
+Request → middleware → controller → MongoDB */
 const Availability = require('../models/availibility');
 const Lawyer = require('../models/lawyer');
 const AppError = require('../utils/AppError');
