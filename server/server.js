@@ -76,6 +76,15 @@ app.use('/api/admin/payments', require('./routes/admin/adminPayment.routes'));
 // --- Shared ---
 app.use('/api/uploads', require('./routes/uploadRoutes'));
 
+// Lightweight health endpoints — no DB query so Render/Vercel health
+// checks and a bare-domain visit don't 404 or wait on Mongo.
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'casejeeto-api' });
+});
+
 // --- Fallbacks ---
 app.use(notFoundHandler);
 app.use(errorHandler);

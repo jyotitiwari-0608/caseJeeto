@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: npm ci
     startCommand: npm start
-    healthCheckPath: /api/lawyers
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
